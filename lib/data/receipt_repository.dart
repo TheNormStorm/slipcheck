@@ -131,6 +131,17 @@ class ProductSummary {
   final int spentCents;
 }
 
+/// What [ReceiptRepository.mergeProducts] changed, for undoing it.
+class MergeUndo {
+  MergeUndo(this.merged, this.keptId, this.keptCategory, this.lineIds, this.aliasIds,
+      this.addedAliasId);
+  final Product merged;
+  final int keptId;
+  final String? keptCategory;
+  final List<int> lineIds, aliasIds;
+  final int addedAliasId;
+}
+
 class StoreSummary {
   StoreSummary(this.id, this.name, this.receiptCount, this.spentCents, this.lastVisit);
   final int id;
@@ -312,8 +323,21 @@ class ReceiptRepository {
 
   /// Makes [mergeId] the same product as [keepId]: its purchases and learned
   /// names move over and it is deleted. Used to link one item across stores.
-  Future<void> mergeProducts({required int keepId, required int mergeId}) =>
+  /// Returns what is needed to undo it (see [undoMerge]).
+  Future<MergeUndo> mergeProducts({required int keepId, required int mergeId}) =>
       db.transaction(() async {
+        final lineIds = [
+          for (final l in await (db.select(db.lineItems)
+                ..where((l) => l.productId.equals(mergeId)))
+              .get())
+            l.id,
+        ];
+        final aliasIds = [
+          for (final a in await (db.select(db.productAliases)
+                ..where((a) => a.productId.equals(mergeId)))
+              .get())
+            a.id,
+        ];
         await (db.update(db.lineItems)..where((l) => l.productId.equals(mergeId)))
             .write(LineItemsCompanion(productId: Value(keepId)));
         await (db.update(db.productAliases)..where((a) => a.productId.equals(mergeId)))
@@ -328,11 +352,41 @@ class ReceiptRepository {
               .write(ProductsCompanion(category: Value(merged.category)));
         }
         // Its own name keeps matching the kept product on future receipts.
-        await db.into(db.productAliases).insert(ProductAliasesCompanion.insert(
+        final aliasId = await db.into(db.productAliases).insert(ProductAliasesCompanion.insert(
               aliasKey: merged.canonicalKey,
               productId: keepId,
             ));
         await (db.delete(db.products)..where((p) => p.id.equals(mergeId))).go();
+        return MergeUndo(merged, keepId, kept.category, lineIds, aliasIds, aliasId);
+      });
+
+  /// Puts a linked product back as it was before [mergeProducts].
+  Future<void> undoMerge(MergeUndo undo) => db.transaction(() async {
+        await db.into(db.products).insert(undo.merged);
+        await (db.update(db.lineItems)..where((l) => l.id.isIn(undo.lineIds)))
+            .write(LineItemsCompanion(productId: Value(undo.merged.id)));
+        await (db.update(db.productAliases)..where((a) => a.id.isIn(undo.aliasIds)))
+            .write(ProductAliasesCompanion(productId: Value(undo.merged.id)));
+        await (db.delete(db.productAliases)..where((a) => a.id.equals(undo.addedAliasId))).go();
+        await (db.update(db.products)..where((p) => p.id.equals(undo.keptId)))
+            .write(ProductsCompanion(category: Value(undo.keptCategory)));
+      });
+
+  /// Gives a product a clearer name ("BEPRTYWNGABF" → "Party wings"). The
+  /// new name also matches it on future receipts.
+  Future<void> renameProduct(int productId, String name) => db.transaction(() async {
+        await (db.update(db.products)..where((p) => p.id.equals(productId)))
+            .write(ProductsCompanion(displayName: Value(name.trim())));
+        final key = normalizeProduct(name).key;
+        final product =
+            await (db.select(db.products)..where((p) => p.id.equals(productId))).getSingle();
+        final exists = await (db.select(db.productAliases)
+              ..where((a) => a.aliasKey.equals(key) & a.storeId.isNull()))
+            .getSingleOrNull();
+        if (key != product.canonicalKey && exists == null) {
+          await db.into(db.productAliases).insert(
+              ProductAliasesCompanion.insert(aliasKey: key, productId: productId));
+        }
       });
 
   /// Folds [mergeId] into [keepId] when OCR or typing split one store in two.

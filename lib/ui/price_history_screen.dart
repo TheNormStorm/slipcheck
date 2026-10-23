@@ -100,14 +100,63 @@ class _PriceHistoryScreenState extends State<PriceHistoryScreen> {
       ),
     );
     if (ok != true) return;
-    await widget.repo.mergeProducts(keepId: me.id, mergeId: other.id);
+    final undo = await widget.repo.mergeProducts(keepId: me.id, mergeId: other.id);
+    _reload();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text('Linked ${other.displayName}.'),
+      duration: const Duration(seconds: 8),
+      action: SnackBarAction(
+        label: 'Undo',
+        onPressed: () async {
+          await widget.repo.undoMerge(undo);
+          _reload();
+        },
+      ),
+    ));
+  }
+
+  Future<void> _rename(ProductSummary product) async {
+    final controller = TextEditingController(text: product.displayName);
+    final name = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Rename item'),
+        content: TextField(controller: controller, autofocus: true),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, controller.text.trim()),
+            child: const Text('Rename'),
+          ),
+        ],
+      ),
+    );
+    if (name == null || name.isEmpty || name == product.displayName) return;
+    await widget.repo.renameProduct(product.id, name);
     _reload();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(widget.product.displayName)),
+      appBar: AppBar(
+        title: FutureBuilder(
+          future: _data,
+          builder: (context, snap) =>
+              Text(snap.data?.product.displayName ?? widget.product.displayName),
+        ),
+        actions: [
+          FutureBuilder(
+            future: _data,
+            builder: (context, snap) => IconButton(
+              tooltip: 'Rename item',
+              icon: const Icon(Icons.edit_outlined),
+              onPressed: snap.data == null ? null : () => _rename(snap.data!.product),
+            ),
+          ),
+        ],
+      ),
       body: FutureBuilder(
         future: _data,
         builder: (context, snap) {

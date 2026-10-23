@@ -253,4 +253,38 @@ void main() {
       expect(await repo.receipts(), hasLength(1));
     });
   });
+
+  group('rename and undo link', () {
+    test('a renamed item keeps matching under both names', () async {
+      await repo.saveReceipt(draft('Market Basket', DateTime(2026, 9, 1), [
+        DraftLine(name: 'BEPRTYWNGABF', lineTotalCents: 422),
+      ]));
+      final id = (await repo.products()).single.id;
+      await repo.renameProduct(id, 'Party wings');
+      expect((await repo.products()).single.displayName, 'Party wings');
+      final matcher = await repo.loadMatcher();
+      expect(matcher.match('BEPRTYWNGABF').product!.id, id);
+      expect(matcher.match('Party wings').product!.id, id);
+    });
+
+    test('undoing a link restores both items exactly', () async {
+      await repo.saveReceipt(draft('Market Basket', DateTime(2026, 9, 1), [
+        DraftLine(name: 'MB LG BROWN CAGE FREE 18PK', lineTotalCents: 299),
+      ]));
+      await repo.saveReceipt(draft('Whole Foods', DateTime(2026, 9, 2), [
+        DraftLine(originalText: '365 LG BRN EGGS 18PK', name: '365 LARGE BROWN EGGS 18PK',
+            lineTotalCents: 449),
+      ]));
+      final before = {for (final p in await repo.products()) p.displayName: p.purchaseCount};
+      final aliasesBefore = (await db.select(db.productAliases).get()).length;
+      final ps = await repo.products();
+      final undo = await repo.mergeProducts(
+          keepId: ps.firstWhere((p) => p.displayName.startsWith('MB')).id,
+          mergeId: ps.firstWhere((p) => p.displayName.startsWith('365')).id);
+      expect(await repo.products(), hasLength(1));
+      await repo.undoMerge(undo);
+      expect({for (final p in await repo.products()) p.displayName: p.purchaseCount}, before);
+      expect((await db.select(db.productAliases).get()).length, aliasesBefore);
+    });
+  });
 }
