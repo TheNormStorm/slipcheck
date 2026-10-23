@@ -19,7 +19,15 @@ class ProductAlias {
   final int? storeId;
 }
 
-enum MatchKind { storeAlias, alias, exact, fuzzy, none }
+enum MatchKind { barcode, storeAlias, alias, exact, fuzzy, none }
+
+/// The alias key a printed barcode or PLU is remembered under, and whether
+/// it only means something at one store. In-store codes for weighed or
+/// packed-in-store goods (13 digits starting with 2, e.g. "2093870000000")
+/// are store-specific; UPC/EAN barcodes and produce PLUs are the same at
+/// every store.
+({String key, bool storeOnly}) codeAlias(String code) =>
+    (key: 'code:$code', storeOnly: code.length >= 12 && code.startsWith('2'));
 
 class MatchResult {
   const MatchResult(this.kind, {this.product, this.score = 0});
@@ -29,7 +37,10 @@ class MatchResult {
 
   /// True when the match is certain enough to apply without asking.
   bool get isConfident =>
-      kind == MatchKind.storeAlias || kind == MatchKind.alias || kind == MatchKind.exact;
+      kind == MatchKind.barcode ||
+      kind == MatchKind.storeAlias ||
+      kind == MatchKind.alias ||
+      kind == MatchKind.exact;
 }
 
 /// Finds which known product a receipt line refers to. Pure and synchronous:
@@ -48,9 +59,20 @@ class ProductMatcher {
   final List<ProductAlias> _aliases;
   final double fuzzyThreshold;
 
-  MatchResult match(String rawText, {int? storeId}) {
+  MatchResult match(String rawText, {int? storeId, String? code}) {
     final norm = normalizeProduct(rawText);
     final key = norm.key;
+
+    if (code != null) {
+      final c = codeAlias(code);
+      for (final a in _aliases) {
+        if (a.key == c.key &&
+            (a.storeId == null || a.storeId == storeId) &&
+            _byId.containsKey(a.productId)) {
+          return MatchResult(MatchKind.barcode, product: _byId[a.productId], score: 1);
+        }
+      }
+    }
 
     if (storeId != null) {
       for (final a in _aliases) {

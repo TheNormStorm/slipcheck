@@ -1,6 +1,7 @@
 import 'package:drift/drift.dart' show OrderingTerm;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:slipcheck/core/categories.dart';
 import 'package:slipcheck/core/matching/product_matcher.dart';
 import 'package:slipcheck/data/database.dart';
 import 'package:slipcheck/data/receipt_repository.dart';
@@ -123,5 +124,73 @@ void main() {
     expect(await repo.receipts(), isEmpty);
     expect(await db.select(db.lineItems).get(), isEmpty);
     expect(await db.select(db.products).get(), hasLength(1));
+  });
+
+  group('barcodes, categories, merging', () {
+    test('a UPC barcode matches the same product at another store', () async {
+      await repo.saveReceipt(draft('Market Basket', DateTime(2026, 9, 1), [
+        DraftLine(name: 'CEDARS PITA', code: '044115110322', lineTotalCents: 299),
+      ]));
+      final otherStore = await repo.saveReceipt(draft('Whole Foods', DateTime(2026, 9, 2), []));
+      final wf = (await repo.receipts(id: otherStore)).single.storeId;
+      final m = (await repo.loadMatcher())
+          .match('CEDARS WHITE PITA BREAD', storeId: wf, code: '044115110322');
+      expect(m.kind, MatchKind.barcode);
+      expect(m.product!.displayName, 'CEDARS PITA');
+    });
+
+    test('an in-store code (2xxxxxxxxxxxx) only matches at that store', () async {
+      await repo.saveReceipt(draft('Market Basket', DateTime(2026, 9, 1), [
+        DraftLine(name: 'PKG GREEN BEANS', code: '2093870000000', lineTotalCents: 299),
+      ]));
+      final mb = await repo.findStoreId('Market Basket');
+      final matcher = await repo.loadMatcher();
+      expect(matcher.match('X', storeId: mb, code: '2093870000000').kind, MatchKind.barcode);
+      expect(matcher.match('X', storeId: mb! + 1, code: '2093870000000').kind,
+          isNot(MatchKind.barcode));
+    });
+
+    test('new products get a category from keywords or the heading', () async {
+      await repo.saveReceipt(draft('Market Basket', DateTime(2026, 9, 1), [
+        DraftLine(name: 'BEPRTYWNGABF', section: 'FRESH POULTRY', lineTotalCents: 422),
+        DraftLine(name: 'CAT CHOW', lineTotalCents: 659),
+      ]));
+      final products = {for (final p in await repo.products()) p.displayName: p.category};
+      expect(products, {'BEPRTYWNGABF': Category.meat, 'CAT CHOW': Category.pet});
+    });
+
+    test('linking two products merges their history and keeps matching', () async {
+      await repo.saveReceipt(draft('Market Basket', DateTime(2026, 9, 1), [
+        DraftLine(name: 'MB LG BROWN CAGE FREE 18PK', lineTotalCents: 299),
+      ]));
+      await repo.saveReceipt(draft('Whole Foods', DateTime(2026, 9, 2), [
+        DraftLine(name: '365 LARGE BROWN EGGS 18PK', lineTotalCents: 449),
+      ]));
+      final ps = await repo.products();
+      final keep = ps.firstWhere((p) => p.displayName.startsWith('MB'));
+      final other = ps.firstWhere((p) => p.displayName.startsWith('365'));
+      await repo.mergeProducts(keepId: keep.id, mergeId: other.id);
+
+      final merged = (await repo.products()).single;
+      expect(merged.purchaseCount, 2);
+      expect(merged.storeIds, hasLength(2));
+      final m = (await repo.loadMatcher()).match('365 LARGE BROWN EGGS 18PK');
+      expect(m.product!.id, keep.id);
+    });
+
+    test('a store name OCR read slightly differently is the same store', () async {
+      await repo.saveReceipt(draft('MARKET BASKET', DateTime(2026, 9, 1), []));
+      await repo.saveReceipt(draft('MARKFT BASKET', DateTime(2026, 9, 8), []));
+      expect(await db.select(db.stores).get(), hasLength(1));
+    });
+
+    test('merging stores moves their receipts', () async {
+      await repo.saveReceipt(draft('Market Basket', DateTime(2026, 9, 1), []));
+      await repo.saveReceipt(draft('MB Somerville', DateTime(2026, 9, 8), []));
+      final stores = await repo.stores();
+      await repo.mergeStores(keepId: stores[0].id, mergeId: stores[1].id);
+      final after = await repo.stores();
+      expect(after.single.receiptCount, 2);
+    });
   });
 }

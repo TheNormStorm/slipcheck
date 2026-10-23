@@ -3,6 +3,7 @@ import 'package:drift/drift.dart';
 import 'dart:io';
 
 import '../core/analytics/purchase.dart';
+import '../core/categories.dart';
 import '../core/matching/product_matcher.dart';
 import '../core/matching/product_normalizer.dart';
 import 'database.dart';
@@ -18,6 +19,8 @@ class DraftLine {
     this.unitPriceCents,
     this.discountCents = 0,
     this.productId,
+    this.code,
+    this.section,
   }) : originalText = originalText ?? name;
 
   /// The product name as corrected by the user.
@@ -34,6 +37,12 @@ class DraftLine {
 
   /// An existing product the user confirmed; null creates or finds one by name.
   int? productId;
+
+  /// Barcode or PLU printed on the line.
+  final String? code;
+
+  /// Department heading the line was printed under.
+  final String? section;
 
   int get netCents => lineTotalCents - discountCents;
 }
@@ -106,7 +115,8 @@ class ReceiptDetail {
 
 class ProductSummary {
   ProductSummary(this.id, this.displayName, this.purchaseCount, this.lastUnitPriceCents,
-      [this.lastUnit = 'each']);
+      [this.lastUnit = 'each', this.category = Category.other, this.storeIds = const {},
+      this.spentCents = 0]);
   final int id;
   final String displayName;
   final int purchaseCount;
@@ -114,6 +124,20 @@ class ProductSummary {
 
   /// What [lastUnitPriceCents] is per: 'each', 'kg' or 'lb'.
   final String lastUnit;
+  final Category category;
+
+  /// Stores it was bought at.
+  final Set<int> storeIds;
+  final int spentCents;
+}
+
+class StoreSummary {
+  StoreSummary(this.id, this.name, this.receiptCount, this.spentCents, this.lastVisit);
+  final int id;
+  final String name;
+  final int receiptCount;
+  final int spentCents;
+  final DateTime? lastVisit;
 }
 
 class PricePoint {
@@ -145,11 +169,25 @@ class ReceiptRepository {
   ReceiptRepository(this.db);
   final AppDatabase db;
 
+  /// The store [name] refers to: the same name, or one OCR read slightly
+  /// differently ("MARKFT BASKET"), so one store is not split in two.
   Future<int?> findStoreId(String name) async {
-    final row = await (db.select(db.stores)
-          ..where((s) => s.normalizedName.equals(normalizeStoreName(name))))
-        .getSingleOrNull();
-    return row?.id;
+    final normalized = normalizeStoreName(name);
+    if (normalized.isEmpty) return null;
+    final stores = await db.select(db.stores).get();
+    for (final s in stores) {
+      if (s.normalizedName == normalized) return s.id;
+    }
+    Store? best;
+    var bestScore = 0.0;
+    for (final s in stores) {
+      final score = similarity(s.normalizedName, normalized);
+      if (score > bestScore) {
+        best = s;
+        bestScore = score;
+      }
+    }
+    return bestScore >= 0.8 ? best!.id : null;
   }
 
   Future<ProductMatcher> loadMatcher() async {
@@ -192,7 +230,8 @@ class ReceiptRepository {
             ));
       }
       for (final (i, line) in draft.lines.indexed) {
-        final productId = line.productId ?? await _findOrCreateProduct(line.name);
+        final productId =
+            line.productId ?? await _findOrCreateProduct(line.name, section: line.section);
         await _rememberAliases(line, productId, storeId);
         await db.into(db.lineItems).insert(LineItemsCompanion.insert(
               receiptId: receiptId,
@@ -204,6 +243,8 @@ class ReceiptRepository {
               unitPriceCents: Value(line.unitPriceCents),
               lineTotalCents: line.lineTotalCents,
               discountCents: Value(line.discountCents),
+              code: Value(line.code),
+              section: Value(line.section),
             ));
       }
       return receiptId;
@@ -219,19 +260,75 @@ class ReceiptRepository {
         ));
   }
 
-  Future<int> _findOrCreateProduct(String name) async {
+  Future<int> _findOrCreateProduct(String name, {String? section}) async {
     final norm = normalizeProduct(name);
     final existing = await (db.select(db.products)
           ..where((p) => p.canonicalKey.equals(norm.key)))
         .getSingleOrNull();
-    if (existing != null) return existing.id;
+    if (existing != null) {
+      if (existing.category == null) {
+        await setCategory(existing.id, categorize(name, section: section));
+      }
+      return existing.id;
+    }
     return db.into(db.products).insert(ProductsCompanion.insert(
           canonicalKey: norm.key,
           displayName: name.trim(),
           sizeValue: Value(norm.sizeValue),
           sizeUnit: Value(norm.sizeUnit),
           packCount: Value(norm.packCount),
+          category: Value(categorize(name, section: section).name),
         ));
+  }
+
+  Future<void> setCategory(int productId, Category category) =>
+      (db.update(db.products)..where((p) => p.id.equals(productId)))
+          .write(ProductsCompanion(category: Value(category.name)));
+
+  /// Makes [mergeId] the same product as [keepId]: its purchases and learned
+  /// names move over and it is deleted. Used to link one item across stores.
+  Future<void> mergeProducts({required int keepId, required int mergeId}) =>
+      db.transaction(() async {
+        await (db.update(db.lineItems)..where((l) => l.productId.equals(mergeId)))
+            .write(LineItemsCompanion(productId: Value(keepId)));
+        await (db.update(db.productAliases)..where((a) => a.productId.equals(mergeId)))
+            .write(ProductAliasesCompanion(productId: Value(keepId)));
+        final merged = await (db.select(db.products)..where((p) => p.id.equals(mergeId)))
+            .getSingle();
+        // Its own name keeps matching the kept product on future receipts.
+        await db.into(db.productAliases).insert(ProductAliasesCompanion.insert(
+              aliasKey: merged.canonicalKey,
+              productId: keepId,
+            ));
+        await (db.delete(db.products)..where((p) => p.id.equals(mergeId))).go();
+      });
+
+  /// Folds [mergeId] into [keepId] when OCR or typing split one store in two.
+  Future<void> mergeStores({required int keepId, required int mergeId}) =>
+      db.transaction(() async {
+        await (db.update(db.receipts)..where((r) => r.storeId.equals(mergeId)))
+            .write(ReceiptsCompanion(storeId: Value(keepId)));
+        await (db.update(db.productAliases)..where((a) => a.storeId.equals(mergeId)))
+            .write(ProductAliasesCompanion(storeId: Value(keepId)));
+        await (db.delete(db.stores)..where((s) => s.id.equals(mergeId))).go();
+      });
+
+  Future<List<StoreSummary>> stores() async {
+    final receipts = await this.receipts();
+    final stores = await db.select(db.stores).get();
+    return [
+      for (final s in stores)
+        () {
+          final mine = receipts.where((r) => r.storeId == s.id).toList();
+          return StoreSummary(
+            s.id,
+            s.name,
+            mine.length,
+            mine.fold(0, (sum, r) => sum + r.spentCents),
+            mine.isEmpty ? null : mine.first.purchasedAt,
+          );
+        }(),
+    ]..sort((a, b) => b.spentCents.compareTo(a.spentCents));
   }
 
   /// Records the OCR text and the corrected name as store-specific aliases,
@@ -240,21 +337,27 @@ class ReceiptRepository {
     final product = await (db.select(db.products)
           ..where((p) => p.id.equals(productId)))
         .getSingle();
-    final keys = {
-      normalizeProduct(line.originalText).key,
-      normalizeProduct(line.name).key,
-    }..remove(product.canonicalKey);
-    for (final key in keys) {
+    final keys = <String, int?>{
+      for (final k in {normalizeProduct(line.originalText).key, normalizeProduct(line.name).key}
+        ..remove(product.canonicalKey))
+        k: storeId,
+    };
+    if (line.code != null) {
+      final c = codeAlias(line.code!);
+      keys[c.key] = c.storeOnly ? storeId : null;
+    }
+    for (final MapEntry(key: key, value: aliasStore) in keys.entries) {
       if (key.isEmpty) continue;
       final query = db.select(db.productAliases)
         ..where((a) => a.aliasKey.equals(key))
-        ..where((a) => storeId == null ? a.storeId.isNull() : a.storeId.equals(storeId));
+        ..where((a) =>
+            aliasStore == null ? a.storeId.isNull() : a.storeId.equals(aliasStore));
       final existing = await query.getSingleOrNull();
       if (existing == null) {
         await db.into(db.productAliases).insert(ProductAliasesCompanion.insert(
               aliasKey: key,
               productId: productId,
-              storeId: Value(storeId),
+              storeId: Value(aliasStore),
             ));
       } else if (existing.productId != productId) {
         // The user corrected an earlier mapping: the latest choice wins.
@@ -384,8 +487,16 @@ class ReceiptRepository {
     final summaries = <ProductSummary>[];
     for (final p in products) {
       final history = await priceHistory(p.id);
-      summaries.add(ProductSummary(p.id, p.displayName, history.length,
-          history.lastOrNull?.unitPriceCents, history.lastOrNull?.unit ?? 'each'));
+      summaries.add(ProductSummary(
+        p.id,
+        p.displayName,
+        history.length,
+        history.lastOrNull?.unitPriceCents,
+        history.lastOrNull?.unit ?? 'each',
+        Category.byName(p.category) ?? Category.other,
+        {for (final h in history) if (h.storeId != null) h.storeId!},
+        history.fold(0, (sum, h) => sum + h.netCents),
+      ));
     }
     return summaries;
   }

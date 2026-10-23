@@ -105,7 +105,7 @@ class LineItemRow extends StatelessWidget {
     final m = match;
     if (m == null) return const SizedBox.shrink();
     switch (m.kind) {
-      case MatchKind.storeAlias || MatchKind.alias || MatchKind.exact:
+      case MatchKind.barcode || MatchKind.storeAlias || MatchKind.alias || MatchKind.exact:
         // Known item: only worth a word when it is saved under another name.
         final same = m.product!.displayName.toLowerCase() == line.name.toLowerCase();
         return same

@@ -175,7 +175,9 @@ class _ReviewScreenState extends State<ReviewScreen> {
   }
 
   MatchResult? _match(DraftLine line) =>
-      line.name.trim().isEmpty ? null : _matcher?.match(line.name, storeId: _storeId);
+      line.name.trim().isEmpty
+          ? null
+          : _matcher?.match(line.name, storeId: _storeId, code: line.code);
 
   int get _itemsSum => draft.lines.fold(0, (s, l) => s + l.netCents);
 

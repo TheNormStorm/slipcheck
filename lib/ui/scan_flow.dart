@@ -76,6 +76,8 @@ class ScanSession {
             unitPriceCents: l.unitPriceCents,
             lineTotalCents: l.lineTotalCents,
             discountCents: l.discountCents,
+            code: l.code,
+            section: l.section,
           ),
       ],
       subtotalCents: parsed.subtotalCents,
