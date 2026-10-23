@@ -6,6 +6,7 @@ import 'package:slipcheck/core/money.dart';
 import 'package:slipcheck/core/parsing/date_parser.dart';
 import 'package:slipcheck/core/parsing/ocr_line.dart';
 import 'package:slipcheck/core/parsing/receipt_parser.dart';
+import 'package:slipcheck/core/parsing/stitcher.dart';
 
 List<String> fixture(String name) =>
     File('test/fixtures/$name.txt').readAsLinesSync();
@@ -127,6 +128,56 @@ void main() {
     test('photo ends before the total, so that is flagged', () {
       expect(r.totalCents, isNull);
       expect(r.warnings, contains('No total found.'));
+    });
+  });
+
+  group('real receipt: long Market Basket in two scanner photos, faded print', () {
+    late ParsedReceipt r;
+    late List<int> order;
+    setUpAll(() {
+      List<String> rowsOf(String name) {
+        final json = jsonDecode(File('test/fixtures/$name.json').readAsStringSync()) as List;
+        return groupIntoRows([for (final l in json) OcrLine.fromJson(l)]);
+      }
+
+      // The gallery handed them over bottom first, and they do not overlap.
+      final pages = [rowsOf('market_basket2_bottom'), rowsOf('market_basket2_top')];
+      order = bestPageOrder(pages);
+      r = const ReceiptParser().parse(stitchPages([for (final i in order) pages[i]]).rows);
+    });
+
+    ParsedLine item(String name) => r.items.firstWhere((i) => i.rawText == name);
+
+    test('the photo with the TOTAL goes last when photos do not overlap', () {
+      expect(order, [1, 0]);
+      expect((r.subtotalCents, r.taxCents, r.totalCents), (36133, 157, 36290));
+    });
+
+    test('"1 @ 2.99" misread as "102.99" prices the item above it', () {
+      expect(r.items.where((i) => i.lineTotalCents >= 10000), isEmpty);
+      expect(item('GEN 8E ANS USA').lineTotalCents, 299);
+    });
+
+    test('weights read through "1b" for "lb" and a lost "@"', () {
+      expect((item('YAMS RED').quantity, item('YAMS RED').unit), (4.73, 'lb'));
+      expect(item('YAMS RED').lineTotalCents, 610); // its own price was unreadable
+      expect(item('CARROTS BULK').lineTotalCents, 210);
+      expect(item('Item 4065').unitPriceCents, 199); // PLU only: name not printed
+    });
+
+    test('stray marks after a price, and "16 78 F" for 16.78', () {
+      expect(item('BELL & EVANS').lineTotalCents, 463);
+      expect(item('CAB BONELESS RIB STEAKS').lineTotalCents, 1678);
+      expect(item('CAB PRIME RIBEYE STEAK').lineTotalCents, 1949);
+      expect(item('BOT TLE DEPOSIT 1PK').quantity, 2); // "2 @ 0.05" read as "290.05"
+    });
+
+    test('what is still missing is what the photos could not show', () {
+      // 361.33 on the receipt. Missing: lines between the photos and faded
+      // past reading (rosemary 1.99, shaved steak 19.98, ~9.88 above them),
+      // misread prices (kiwi "a.42" for 8.42, scallions "1.4:" for 1.49) and
+      // ground beef read as 6.46 for 8.46.
+      expect(r.itemsSumCents, 31856);
     });
   });
 

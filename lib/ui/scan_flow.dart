@@ -92,8 +92,9 @@ class ScanSession {
           if (page.problem != null) 'Photo ${i + 1}: ${page.problem}. Retake it?',
         for (final join in result.stitch.joins)
           if (!join.found)
-            'Could not find where photo ${join.page + 1} overlaps photo ${join.page}. '
-                'Check for missing or doubled lines there.',
+            'Photos ${join.page} and ${join.page + 1} do not overlap, so lines between '
+                'them may be missing. Retake photo ${join.page + 1} starting 2–3 lines '
+                'above where photo ${join.page} ends.',
         // A missing total and the items-vs-total check are shown in the
         // review screen's summary instead.
         for (final w in result.parsed.warnings)

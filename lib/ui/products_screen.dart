@@ -28,7 +28,9 @@ class ProductsScreen extends StatelessWidget {
                 subtitle: Text('Bought ${p.purchaseCount}×'),
                 trailing: Text(p.lastUnitPriceCents == null
                     ? ''
-                    : formatCents(p.lastUnitPriceCents!)),
+                    : p.lastUnit == 'each'
+                        ? '${formatCents(p.lastUnitPriceCents!)} each'
+                        : '${formatCents(p.lastUnitPriceCents!)}/${p.lastUnit}'),
                 onTap: () => Navigator.of(context).push(MaterialPageRoute(
                   builder: (_) => PriceHistoryScreen(repo: repo, product: p),
                 )),

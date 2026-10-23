@@ -72,11 +72,15 @@ class ReceiptSummary {
 }
 
 class ProductSummary {
-  ProductSummary(this.id, this.displayName, this.purchaseCount, this.lastUnitPriceCents);
+  ProductSummary(this.id, this.displayName, this.purchaseCount, this.lastUnitPriceCents,
+      [this.lastUnit = 'each']);
   final int id;
   final String displayName;
   final int purchaseCount;
   final int? lastUnitPriceCents;
+
+  /// What [lastUnitPriceCents] is per: 'each', 'kg' or 'lb'.
+  final String lastUnit;
 }
 
 class PricePoint {
@@ -255,7 +259,7 @@ class ReceiptRepository {
     for (final p in products) {
       final history = await priceHistory(p.id);
       summaries.add(ProductSummary(p.id, p.displayName, history.length,
-          history.isEmpty ? null : history.last.unitPriceCents));
+          history.lastOrNull?.unitPriceCents, history.lastOrNull?.unit ?? 'each'));
     }
     return summaries;
   }

@@ -125,30 +125,40 @@ bool _sameRow(String a, String b, double threshold) {
 ///
 /// Photos picked from a gallery arrive in whatever order the picker gives,
 /// so every order is tried for up to [maxPages] photos. An order wins with
-/// more joins found, then more agreeing rows; ties keep the given order.
+/// more joins found, then more agreeing rows, then with no TOTAL line before
+/// the last photo (what decides it when the photos do not overlap at all);
+/// ties keep the given order.
 List<int> bestPageOrder(List<List<String>> pages, {int maxPages = 5}) {
   final identity = [for (var i = 0; i < pages.length; i++) i];
   if (pages.length < 2 || pages.length > maxPages) return identity;
 
-  (int, int) score(List<int> order) {
+  final hasTotal = [for (final page in pages) page.any(_totalRow.hasMatch)];
+
+  (int, int, int) score(List<int> order) {
     final joins = stitchPages([for (final i in order) pages[i]]).joins;
     return (
       joins.where((j) => j.found).length,
       joins.fold(0, (s, j) => s + j.matchingRows),
+      -[for (final i in order.sublist(0, order.length - 1)) if (hasTotal[i]) i].length,
     );
   }
+
+  bool better((int, int, int) a, (int, int, int) b) =>
+      a.$1 != b.$1 ? a.$1 > b.$1 : a.$2 != b.$2 ? a.$2 > b.$2 : a.$3 > b.$3;
 
   var best = identity;
   var bestScore = score(identity);
   for (final order in _permutations(identity)) {
     final s = score(order);
-    if (s.$1 > bestScore.$1 || (s.$1 == bestScore.$1 && s.$2 > bestScore.$2)) {
+    if (better(s, bestScore)) {
       best = order;
       bestScore = s;
     }
   }
   return best;
 }
+
+final _totalRow = RegExp(r'^\s*(sub\s*total|total)\b', caseSensitive: false);
 
 Iterable<List<int>> _permutations(List<int> items) sync* {
   if (items.length <= 1) {
