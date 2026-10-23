@@ -39,27 +39,27 @@ Future<List<String>?> capturePages(BuildContext context, {int pageLimit = 8}) as
 /// The photos behind a receipt being reviewed, so pages can be added or
 /// retaken and the receipt read again.
 class ScanSession {
-  ScanSession(this.reader, this.pages) : result = reader.combine(pages);
+  ScanSession(this.reader, List<PageRead> pages) : result = reader.combine(pages);
 
   final ReceiptReader reader;
-  final List<PageRead> pages;
   ReadResult result;
 
+  /// The photos in receipt order, as worked out by the last read.
+  List<PageRead> get pages => result.pages;
+
   Future<void> addPages(List<String> paths) async {
-    for (final path in paths) {
-      pages.add(await reader.readPage(path));
-    }
-    result = reader.combine(pages);
+    final added = [for (final path in paths) await reader.readPage(path)];
+    result = reader.combine([...pages, ...added]);
   }
 
   Future<void> replacePage(int index, String path) async {
-    pages[index] = await reader.readPage(path);
-    result = reader.combine(pages);
+    final updated = [...pages];
+    updated[index] = await reader.readPage(path);
+    result = reader.combine(updated);
   }
 
   void removePage(int index) {
-    pages.removeAt(index);
-    result = reader.combine(pages);
+    result = reader.combine([...pages]..removeAt(index));
   }
 
   ReceiptDraft toDraft() {

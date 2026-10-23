@@ -4,7 +4,12 @@ import '../matching/product_matcher.dart' show similarity;
 
 /// How one page was joined onto the pages before it.
 class PageJoin {
-  const PageJoin({required this.page, required this.found, this.overlapRows = 0});
+  const PageJoin({
+    required this.page,
+    required this.found,
+    this.overlapRows = 0,
+    this.matchingRows = 0,
+  });
 
   /// Index of the page that was appended (1 for the second photo).
   final int page;
@@ -13,6 +18,9 @@ class PageJoin {
   /// lines may then be missing or doubled at the join.
   final bool found;
   final int overlapRows;
+
+  /// Rows inside the overlap that agreed between the two photos.
+  final int matchingRows;
 }
 
 class StitchResult {
@@ -92,7 +100,8 @@ StitchResult stitchPages(
     // overlap did; nothing to add from it.
     rows.addAll(rest);
     pageOf.addAll(List.filled(rest.length, p));
-    joins.add(PageJoin(page: p, found: true, overlapRows: best.window));
+    joins.add(PageJoin(
+        page: p, found: true, overlapRows: best.window, matchingRows: best.matches));
   }
   return StitchResult(rows, pageOf, joins);
 }
@@ -109,4 +118,47 @@ bool _sameRow(String a, String b, double threshold) {
   final ka = _key(a), kb = _key(b);
   if (ka.isEmpty || kb.isEmpty) return false;
   return ka == kb || similarity(ka, kb) >= threshold;
+}
+
+/// Finds the order of [pages] (photos of one receipt, in any order) whose
+/// overlaps join up best, returned as indexes into [pages].
+///
+/// Photos picked from a gallery arrive in whatever order the picker gives,
+/// so every order is tried for up to [maxPages] photos. An order wins with
+/// more joins found, then more agreeing rows; ties keep the given order.
+List<int> bestPageOrder(List<List<String>> pages, {int maxPages = 5}) {
+  final identity = [for (var i = 0; i < pages.length; i++) i];
+  if (pages.length < 2 || pages.length > maxPages) return identity;
+
+  (int, int) score(List<int> order) {
+    final joins = stitchPages([for (final i in order) pages[i]]).joins;
+    return (
+      joins.where((j) => j.found).length,
+      joins.fold(0, (s, j) => s + j.matchingRows),
+    );
+  }
+
+  var best = identity;
+  var bestScore = score(identity);
+  for (final order in _permutations(identity)) {
+    final s = score(order);
+    if (s.$1 > bestScore.$1 || (s.$1 == bestScore.$1 && s.$2 > bestScore.$2)) {
+      best = order;
+      bestScore = s;
+    }
+  }
+  return best;
+}
+
+Iterable<List<int>> _permutations(List<int> items) sync* {
+  if (items.length <= 1) {
+    yield items;
+    return;
+  }
+  for (var i = 0; i < items.length; i++) {
+    final rest = [...items]..removeAt(i);
+    for (final p in _permutations(rest)) {
+      yield [items[i], ...p];
+    }
+  }
 }

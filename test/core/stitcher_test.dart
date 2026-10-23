@@ -72,4 +72,38 @@ void main() {
     expect(s.pageOfRow.where((p) => p == 0), hasLength(10));
     expect(s.pageOfRow.where((p) => p == 1), hasLength(10));
   });
+
+  test('photos picked out of order are put back in receipt order', () {
+    final top = full.sublist(0, 30), middle = full.sublist(27, 55), bottom = full.sublist(52);
+    expect(bestPageOrder([middle, top, bottom]), [1, 0, 2]);
+    expect(bestPageOrder([bottom, middle, top]), [2, 1, 0]);
+    expect(bestPageOrder([top, middle, bottom]), [0, 1, 2]);
+  });
+
+  test('order is left alone when no overlaps are found', () {
+    expect(bestPageOrder([full.sublist(40, 60), full.sublist(0, 20)]), [0, 1]);
+  });
+
+  test('real photos: the Market Basket receipt in three overlapping photos', () {
+    List<String> rowsOf(String name) {
+      final json = jsonDecode(File('test/fixtures/$name.json').readAsStringSync()) as List;
+      return groupIntoRows([for (final l in json) OcrLine.fromJson(l)]);
+    }
+
+    // Given in the wrong order, as a gallery picker might.
+    final pages = [rowsOf('market_basket_part2'), rowsOf('market_basket_part3'),
+        rowsOf('market_basket_part1')];
+    final order = bestPageOrder(pages);
+    expect(order, [2, 0, 1]);
+
+    final stitched = stitchPages([for (final i in order) pages[i]]);
+    expect(stitched.joins.every((j) => j.found), isTrue);
+    final fromPhotos = const ReceiptParser().parse(stitched.rows);
+    final fromOnePhoto = const ReceiptParser().parse(full);
+    expect(fromPhotos.items.map((i) => i.lineTotalCents),
+        fromOnePhoto.items.map((i) => i.lineTotalCents));
+    expect(fromPhotos.items.map((i) => i.quantity),
+        fromOnePhoto.items.map((i) => i.quantity));
+    expect(fromPhotos.storeName, 'MARKET BASKET');
+  });
 }

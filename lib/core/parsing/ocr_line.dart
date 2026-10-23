@@ -75,8 +75,8 @@ class OcrLine {
 /// undo the photo's tilt, and a receipt held in the hand curls, so the tilt
 /// differs from top to bottom: near the top of a real receipt the prices sat
 /// 26 px above their names, at the bottom level with them. Each line's
-/// position is therefore corrected with the median angle of the lines around
-/// it, then fragments whose corrected centres are within half a text height of
+/// position is therefore corrected with the width-weighted median measured
+/// angle of the lines around it, then fragments whose corrected centres are within half a text height of
 /// a row's centre join that row, left to right, separated by two spaces so the
 /// column gap survives.
 ///
@@ -88,15 +88,22 @@ List<String> groupIntoRows(List<OcrLine> lines) {
 
   final textHeight = _median(usable.map((l) => l.lineHeight).toList());
   final refX = _median(usable.map((l) => l.centerX).toList());
-  final window = textHeight * 5;
+  final window = textHeight * 6;
+  // ML Kit returns an unrotated box (angle exactly 0) for many lines whose
+  // neighbours measure a clear tilt, so a 0 means "not measured". Short lines
+  // measure angle poorly (a pixel of error is a large angle), so each angle
+  // is weighted by the line's width.
+  final measured = usable.where((l) => l.angle != 0).toList();
+  double localAngle(OcrLine l) {
+    final near = [
+      for (final o in measured)
+        if ((o.centerY - l.centerY).abs() <= window) (o.angle, o.right - o.left),
+    ];
+    return near.isEmpty ? 0 : _weightedMedian(near);
+  }
+
   final corrected = <OcrLine, double>{
-    for (final l in usable)
-      l: l.centerY -
-          _median([
-                for (final o in usable)
-                  if ((o.centerY - l.centerY).abs() <= window) o.angle,
-              ]) *
-              (l.centerX - refX),
+    for (final l in usable) l: l.centerY - localAngle(l) * (l.centerX - refX),
   };
 
   final tolerance = textHeight * 0.5;
@@ -134,4 +141,15 @@ List<String> groupIntoRows(List<OcrLine> lines) {
 double _median(List<double> values) {
   final s = [...values]..sort();
   return s[s.length ~/ 2];
+}
+
+double _weightedMedian(List<(double, double)> valueWeights) {
+  final s = [...valueWeights]..sort((a, b) => a.$1.compareTo(b.$1));
+  final half = s.fold(0.0, (sum, e) => sum + e.$2) / 2;
+  var acc = 0.0;
+  for (final (value, weight) in s) {
+    acc += weight;
+    if (acc >= half) return value;
+  }
+  return s.last.$1;
 }

@@ -57,10 +57,13 @@ class ReceiptReader {
     return PageRead(imagePath, groupIntoRows(lines), pageProblem(lines));
   }
 
-  /// Stitches [pages] (top of the receipt first) and parses the result.
+  /// Puts [pages] in receipt order (see `bestPageOrder`), stitches them and
+  /// parses the result. The returned pages are in the order used.
   ReadResult combine(List<PageRead> pages) {
-    final stitch = stitchPages([for (final page in pages) page.rows]);
-    return ReadResult(pages, stitch, parser.parse(stitch.rows));
+    final order = bestPageOrder([for (final page in pages) page.rows]);
+    final ordered = [for (final i in order) pages[i]];
+    final stitch = stitchPages([for (final page in ordered) page.rows]);
+    return ReadResult(ordered, stitch, parser.parse(stitch.rows));
   }
 
   Future<String> _keepCopy(String source) async {
