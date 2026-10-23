@@ -1,6 +1,9 @@
 import 'package:drift/drift.dart';
 import 'package:drift_flutter/drift_flutter.dart';
 
+import '../core/categories.dart';
+import '../core/parsing/receipt_parser.dart';
+
 part 'database.g.dart';
 
 class Stores extends Table {
@@ -100,6 +103,38 @@ class AppDatabase extends _$AppDatabase {
   @override
   int get schemaVersion => 3;
 
+  /// For receipts saved before version 3: re-reads each receipt's stored OCR
+  /// text to recover the barcode and department heading of every line, then
+  /// categorises products by name and heading.
+  Future<void> _backfillCodesAndCategories() async {
+    final sectionsOf = <int, List<String>>{};
+    for (final r in await select(receipts).get()) {
+      final text = r.ocrText;
+      if (text == null) continue;
+      final parsed = const ReceiptParser().parse(text.split('\n')).items;
+      final lines = await (select(lineItems)
+            ..where((l) => l.receiptId.equals(r.id))
+            ..orderBy([(l) => OrderingTerm.asc(l.position)]))
+          .get();
+      final unused = [...parsed];
+      for (final line in lines) {
+        final i = unused.indexWhere((p) => p.rawText == line.rawText);
+        if (i < 0) continue;
+        final p = unused.removeAt(i);
+        await (update(lineItems)..where((l) => l.id.equals(line.id)))
+            .write(LineItemsCompanion(code: Value(p.code), section: Value(p.section)));
+        if (line.productId != null && p.section != null) {
+          sectionsOf.putIfAbsent(line.productId!, () => []).add(p.section!);
+        }
+      }
+    }
+    for (final p in await select(products).get()) {
+      final section = sectionsOf[p.id]?.first;
+      await (update(products)..where((t) => t.id.equals(p.id))).write(ProductsCompanion(
+          category: Value(categorize(p.displayName, section: section).name)));
+    }
+  }
+
   @override
   MigrationStrategy get migration => MigrationStrategy(
         onCreate: (m) => m.createAll(),
@@ -109,6 +144,7 @@ class AppDatabase extends _$AppDatabase {
             await m.addColumn(products, products.category);
             await m.addColumn(lineItems, lineItems.code);
             await m.addColumn(lineItems, lineItems.section);
+            await _backfillCodesAndCategories();
           }
         },
         beforeOpen: (details) async {
