@@ -3,12 +3,12 @@ import 'dart:io';
 
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 
 import '../core/parsing/ocr_line.dart';
 import '../core/parsing/page_quality.dart';
 import '../core/parsing/receipt_parser.dart';
 import '../core/parsing/stitcher.dart';
+import '../data/receipt_files.dart';
 
 /// One photo of (part of) a receipt after OCR.
 class PageRead {
@@ -67,8 +67,7 @@ class ReceiptReader {
   }
 
   Future<String> _keepCopy(String source) async {
-    final docs = await getApplicationDocumentsDirectory();
-    final dir = Directory(p.join(docs.path, 'receipts'));
+    final dir = await ReceiptFiles.photosDir();
     await dir.create(recursive: true);
     final target = p.join(dir.path,
         '${DateTime.now().microsecondsSinceEpoch}${p.extension(source)}');
@@ -82,14 +81,11 @@ class ReceiptReader {
   /// (Android/data/com.slipcheck.slipcheck/files/ocr).
   Future<void> _saveOcrDump(String imagePath, List<OcrLine> lines) async {
     final json = jsonEncode([for (final l in lines) l.toJson()]);
-    await File('${p.withoutExtension(imagePath)}.ocr.json').writeAsString(json);
-    if (Platform.isAndroid) {
-      final external = await getExternalStorageDirectory();
-      if (external == null) return;
-      final dir = Directory(p.join(external.path, 'ocr'));
-      await dir.create(recursive: true);
-      await File(p.join(dir.path, '${p.basenameWithoutExtension(imagePath)}.json'))
-          .writeAsString(json);
+    await File(ReceiptFiles.ocrPathFor(imagePath)).writeAsString(json);
+    final external = await ReceiptFiles.externalOcrPathFor(imagePath);
+    if (external != null) {
+      await File(external).parent.create(recursive: true);
+      await File(external).writeAsString(json);
     }
   }
 

@@ -1,12 +1,12 @@
 import 'package:drift/drift.dart';
 
-import 'dart:io';
 
 import '../core/analytics/purchase.dart';
 import '../core/categories.dart';
 import '../core/matching/product_matcher.dart';
 import '../core/matching/product_normalizer.dart';
 import 'database.dart';
+import 'receipt_files.dart';
 
 /// One line on the review screen, as the user left it.
 class DraftLine {
@@ -472,19 +472,35 @@ class ReceiptRepository {
 
   /// Deletes a receipt, its lines and its photos. Products and learned
   /// names stay, as other receipts may use them.
-  Future<void> deleteReceipt(int id) async {
+  Future<void> deleteReceipt(int id, {bool deleteFiles = true}) async {
     final images = await (db.select(db.receiptImages)..where((i) => i.receiptId.equals(id))).get();
     await db.transaction(() async {
       await (db.delete(db.lineItems)..where((l) => l.receiptId.equals(id))).go();
       await (db.delete(db.receiptImages)..where((i) => i.receiptId.equals(id))).go();
       await (db.delete(db.receipts)..where((r) => r.id.equals(id))).go();
     });
-    for (final image in images) {
-      for (final path in [image.path, '${image.path.replaceFirst(RegExp(r'\.\w+$'), '')}.ocr.json']) {
-        final file = File(path);
-        if (await file.exists()) await file.delete();
+    if (deleteFiles) {
+      for (final image in images) {
+        await ReceiptFiles.deleteFor(image.path);
       }
     }
+  }
+
+  /// Deletes every receipt, its lines and photos. With [forgetItems] it also
+  /// forgets products, learned names, links, categories and stores: a full
+  /// reset. Without, the next receipts still match what was learned.
+  Future<void> clearAll({required bool forgetItems, bool deleteFiles = true}) async {
+    await db.transaction(() async {
+      await db.delete(db.lineItems).go();
+      await db.delete(db.receiptImages).go();
+      await db.delete(db.receipts).go();
+      if (forgetItems) {
+        await db.delete(db.productAliases).go();
+        await db.delete(db.products).go();
+        await db.delete(db.stores).go();
+      }
+    });
+    if (deleteFiles) await ReceiptFiles.deleteAll();
   }
 
   Future<List<ProductSummary>> products() async {

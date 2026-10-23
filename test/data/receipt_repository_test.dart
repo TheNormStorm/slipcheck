@@ -193,4 +193,29 @@ void main() {
       expect(after.single.receiptCount, 2);
     });
   });
+
+  group('clearAll', () {
+    Future<void> seed() async {
+      await repo.saveReceipt(draft('Market Basket', DateTime(2026, 9, 1), [
+        DraftLine(name: 'MILK 2% 1L', code: '012000171741', lineTotalCents: 469),
+      ]));
+    }
+
+    test('keeps what was learned unless told to forget', () async {
+      await seed();
+      await repo.clearAll(forgetItems: false, deleteFiles: false);
+      expect(await repo.receipts(), isEmpty);
+      expect(await db.select(db.lineItems).get(), isEmpty);
+      expect(await db.select(db.products).get(), hasLength(1));
+      expect((await repo.loadMatcher()).match('X', code: '012000171741').kind, MatchKind.barcode);
+    });
+
+    test('a full reset forgets items, links and stores', () async {
+      await seed();
+      await repo.clearAll(forgetItems: true, deleteFiles: false);
+      expect(await db.select(db.products).get(), isEmpty);
+      expect(await db.select(db.productAliases).get(), isEmpty);
+      expect(await db.select(db.stores).get(), isEmpty);
+    });
+  });
 }

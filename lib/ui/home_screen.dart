@@ -37,6 +37,48 @@ class _HomeScreenState extends State<HomeScreen> {
         _stores = widget.repo.stores();
       });
 
+  Future<void> _clearAll() async {
+    final count = (await widget.repo.receipts()).length;
+    if (!mounted) return;
+    var forgetItems = false;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialog) => AlertDialog(
+          title: const Text('Clear all receipts?'),
+          content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('All $count receipt${count == 1 ? '' : 's'}, their photos and price history '
+                'will be deleted from this phone. This cannot be undone.'),
+            const SizedBox(height: 12),
+            CheckboxListTile(
+              contentPadding: EdgeInsets.zero,
+              value: forgetItems,
+              onChanged: (v) => setDialog(() => forgetItems = v ?? false),
+              title: const Text('Also forget items and stores'),
+              subtitle: const Text('Learned names, links between stores and categories. '
+                  'Leave unticked to keep recognising your items.'),
+            ),
+          ]),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: Theme.of(context).colorScheme.error),
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Delete all'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (ok != true) return;
+    await widget.repo.clearAll(forgetItems: forgetItems);
+    _reload();
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(forgetItems ? 'Everything cleared.' : 'All receipts cleared.')));
+    }
+  }
+
   Future<void> _open(Widget screen) async {
     await Navigator.of(context).push(MaterialPageRoute(builder: (_) => screen));
     _reload();
@@ -116,6 +158,12 @@ class _HomeScreenState extends State<HomeScreen> {
             onPressed: () => Navigator.of(context).push(MaterialPageRoute(
               builder: (_) => ProductsScreen(repo: widget.repo),
             )),
+          ),
+          PopupMenuButton<String>(
+            onSelected: (_) => _clearAll(),
+            itemBuilder: (_) => const [
+              PopupMenuItem(value: 'clear', child: Text('Clear all receipts…')),
+            ],
           ),
         ],
       ),
