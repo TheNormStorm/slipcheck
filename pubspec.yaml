@@ -1,0 +1,28 @@
+name: slipcheck
+description: "Photograph shopping receipts and track item prices over time. Fully on-device."
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.12.2
+
+dependencies:
+  drift: ^2.35.2
+  drift_flutter: ^0.3.1
+  flutter:
+    sdk: flutter
+  google_mlkit_text_recognition: ^0.17.1
+  image_picker: ^1.2.4
+  intl: ^0.20.3
+  path: ^1.9.1
+  path_provider: ^2.1.6
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  drift_dev: ^2.35.1
+  build_runner: ^2.15.1
+
+flutter:
+  uses-material-design: true
