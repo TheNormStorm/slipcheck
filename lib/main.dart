@@ -1,20 +1,27 @@
 import 'package:flutter/material.dart';
 
+import 'data/database.dart';
+import 'data/receipt_repository.dart';
+import 'ocr/receipt_reader.dart';
+import 'ui/home_screen.dart';
+
 void main() {
-  runApp(const MainApp());
+  final repo = ReceiptRepository(AppDatabase());
+  runApp(SlipcheckApp(repo: repo, reader: ReceiptReader()));
 }
 
-class MainApp extends StatelessWidget {
-  const MainApp({super.key});
+class SlipcheckApp extends StatelessWidget {
+  const SlipcheckApp({super.key, required this.repo, required this.reader});
+
+  final ReceiptRepository repo;
+  final ReceiptReader reader;
 
   @override
   Widget build(BuildContext context) {
-    return const MaterialApp(
-      home: Scaffold(
-        body: Center(
-          child: Text('Hello World!'),
-        ),
-      ),
+    return MaterialApp(
+      title: 'Slipcheck',
+      theme: ThemeData(colorSchemeSeed: Colors.teal),
+      home: HomeScreen(repo: repo, reader: reader),
     );
   }
 }

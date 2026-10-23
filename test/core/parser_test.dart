@@ -20,6 +20,12 @@ void main() {
       expect(parseCents('12'), isNull);
       expect(parseCents('1.5'), isNull);
     });
+    test('parses typed prices', () {
+      expect(parseTypedCents('4'), 400);
+      expect(parseTypedCents('4.5'), 450);
+      expect(parseTypedCents('4,05'), 405);
+      expect(parseTypedCents('abc'), isNull);
+    });
     test('formats cents', () {
       expect(formatCents(2435), '24.35');
       expect(formatCents(5), '0.05');

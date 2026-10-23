@@ -19,3 +19,14 @@ String formatCents(int cents) {
   final abs = cents.abs();
   return '$sign${abs ~/ 100}.${(abs % 100).toString().padLeft(2, '0')}';
 }
+
+final _typed = RegExp(r'^(-)?\$?(\d{1,6})(?:[.,](\d{1,2}))?$');
+
+/// Parses what a person types in a price field: "4", "4.5", "4,50", "$4.50".
+int? parseTypedCents(String text) {
+  final m = _typed.firstMatch(text.trim());
+  if (m == null) return null;
+  final cents = int.parse(m.group(2)!) * 100 +
+      int.parse((m.group(3) ?? '0').padRight(2, '0'));
+  return m.group(1) != null ? -cents : cents;
+}
