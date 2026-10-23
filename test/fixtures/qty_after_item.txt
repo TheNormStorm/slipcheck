@@ -1,0 +1,9 @@
+VALUE STORE #1042
+Oct 21, 2026
+YOGURT 750G           5.98
+2 @ 2.99
+APPLES GALA
+0.850 kg @ 4.39/kg    3.73
+SUBTOTAL               9.71
+TAX                    0.00
+BALANCE DUE            9.71

@@ -1,0 +1,20 @@
+FRESHMART
+123 Main Street
+(416) 555-0199
+2026-10-18 14:32
+MILK 2% 1L            4.99 H
+BREAD WW 675G         3.49
+BANANAS
+1.234 kg @ $1.52/kg   1.88
+2 @ 1.99
+COKE 355ML            3.98
+ORANGES
+3 @ 0.79              2.37
+CHEDDAR CHS 400G      7.99
+  MEMBER SAVINGS     -1.00
+SUBTOTAL             23.70
+HST 13%               0.65
+TOTAL                24.35
+VISA                 24.35
+CHANGE                0.00
+ITEMS SOLD 8

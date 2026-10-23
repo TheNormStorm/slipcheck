@@ -1,0 +1,5 @@
+QUICKSTOP
+21/10/2026
+CHIPS                 2.49
+SODA                  1.99
+TOTAL                 5.48
