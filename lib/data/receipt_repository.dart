@@ -229,26 +229,51 @@ class ReceiptRepository {
               path: path,
             ));
       }
-      for (final (i, line) in draft.lines.indexed) {
-        final productId =
-            line.productId ?? await _findOrCreateProduct(line.name, section: line.section);
-        await _rememberAliases(line, productId, storeId);
-        await db.into(db.lineItems).insert(LineItemsCompanion.insert(
-              receiptId: receiptId,
-              position: i,
-              rawText: line.originalText,
-              productId: Value(productId),
-              quantity: Value(line.quantity),
-              unit: Value(line.unit),
-              unitPriceCents: Value(line.unitPriceCents),
-              lineTotalCents: line.lineTotalCents,
-              discountCents: Value(line.discountCents),
-              code: Value(line.code),
-              section: Value(line.section),
-            ));
-      }
+      await _insertLines(receiptId, storeId, draft.lines);
       return receiptId;
     });
+  }
+
+  /// Replaces a saved receipt's details and lines with [draft]; its photos
+  /// and OCR text stay.
+  Future<void> updateReceipt(int receiptId, ReceiptDraft draft) {
+    return db.transaction(() async {
+      final storeId = draft.storeName.trim().isEmpty
+          ? null
+          : await _findOrCreateStore(draft.storeName);
+      await (db.update(db.receipts)..where((r) => r.id.equals(receiptId))).write(
+        ReceiptsCompanion(
+          storeId: Value(storeId),
+          purchasedAt: Value(draft.purchasedAt),
+          subtotalCents: Value(draft.subtotalCents),
+          taxCents: Value(draft.taxCents),
+          totalCents: Value(draft.totalCents),
+        ),
+      );
+      await (db.delete(db.lineItems)..where((l) => l.receiptId.equals(receiptId))).go();
+      await _insertLines(receiptId, storeId, draft.lines);
+    });
+  }
+
+  Future<void> _insertLines(int receiptId, int? storeId, List<DraftLine> lines) async {
+    for (final (i, line) in lines.indexed) {
+      final productId =
+          line.productId ?? await _findOrCreateProduct(line.name, section: line.section);
+      await _rememberAliases(line, productId, storeId);
+      await db.into(db.lineItems).insert(LineItemsCompanion.insert(
+            receiptId: receiptId,
+            position: i,
+            rawText: line.originalText,
+            productId: Value(productId),
+            quantity: Value(line.quantity),
+            unit: Value(line.unit),
+            unitPriceCents: Value(line.unitPriceCents),
+            lineTotalCents: line.lineTotalCents,
+            discountCents: Value(line.discountCents),
+            code: Value(line.code),
+            section: Value(line.section),
+          ));
+    }
   }
 
   Future<int> _findOrCreateStore(String name) async {
@@ -431,6 +456,8 @@ class ReceiptRepository {
               lineTotalCents: item.lineTotalCents,
               discountCents: item.discountCents,
               productId: item.productId,
+              code: item.code,
+              section: item.section,
             );
           }(),
       ],
@@ -468,6 +495,25 @@ class ReceiptRepository {
           );
         }(),
     ];
+  }
+
+  /// An already saved receipt that [draft] is probably a second scan of: same
+  /// store, same day and same total (or the same items total when no total
+  /// was read). [exceptId] is the receipt being edited.
+  Future<ReceiptSummary?> findDuplicate(ReceiptDraft draft, {int? exceptId}) async {
+    final storeId = await findStoreId(draft.storeName);
+    final itemsCents = draft.lines.fold(0, (s, l) => s + l.netCents);
+    final d = draft.purchasedAt;
+    for (final r in await receipts()) {
+      if (r.id == exceptId || r.storeId != storeId) continue;
+      final p = r.purchasedAt;
+      if (p.year != d.year || p.month != d.month || p.day != d.day) continue;
+      final sameTotal = draft.totalCents != null && r.totalCents != null
+          ? draft.totalCents == r.totalCents
+          : itemsCents == r.itemsCents;
+      if (sameTotal) return r;
+    }
+    return null;
   }
 
   /// Deletes a receipt, its lines and its photos. Products and learned

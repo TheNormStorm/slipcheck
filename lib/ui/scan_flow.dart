@@ -4,6 +4,7 @@ import 'package:google_mlkit_document_scanner/google_mlkit_document_scanner.dart
 import 'package:image_picker/image_picker.dart';
 
 import '../core/parsing/redaction.dart';
+import '../data/receipt_files.dart';
 import '../data/receipt_repository.dart';
 import '../ocr/receipt_reader.dart';
 
@@ -55,12 +56,23 @@ class ScanSession {
 
   Future<void> replacePage(int index, String path) async {
     final updated = [...pages];
+    final old = updated[index];
     updated[index] = await reader.readPage(path);
     result = reader.combine(updated);
+    await ReceiptFiles.deleteFor(old.imagePath);
   }
 
-  void removePage(int index) {
+  Future<void> removePage(int index) async {
+    final old = pages[index];
     result = reader.combine([...pages]..removeAt(index));
+    await ReceiptFiles.deleteFor(old.imagePath);
+  }
+
+  /// Removes the photos and OCR files of a scan that is not being saved.
+  Future<void> deleteFiles() async {
+    for (final page in pages) {
+      await ReceiptFiles.deleteFor(page.imagePath);
+    }
   }
 
   ReceiptDraft toDraft() {
@@ -103,6 +115,8 @@ class ScanSession {
         // review screen's summary instead.
         for (final w in result.parsed.warnings)
           if (w == 'No items found.') w,
+        if (result.parsed.date == null)
+          'No date found on the receipt, so it is set to today. Check it.',
       ];
 
   String summary() {

@@ -9,6 +9,7 @@ import '../data/receipt_repository.dart';
 import 'chart_palette.dart';
 import 'compare_screen.dart';
 import 'line_item_row.dart';
+import 'review_screen.dart';
 
 /// A saved receipt: its lines, each with how its price compares to what you
 /// usually pay, and actions to compare it with another receipt or delete it.
@@ -22,7 +23,30 @@ class ReceiptDetailScreen extends StatefulWidget {
 }
 
 class _ReceiptDetailScreenState extends State<ReceiptDetailScreen> {
-  late final Future<(ReceiptDetail, List<Purchase>)> _data = _load();
+  late Future<(ReceiptDetail, List<Purchase>)> _data = _load();
+
+  Future<void> _edit(ReceiptDetail detail) async {
+    final s = detail.summary;
+    final saved = await Navigator.push<bool>(context, MaterialPageRoute(
+      builder: (_) => ReviewScreen(
+        repo: widget.repo,
+        editingReceiptId: widget.receiptId,
+        draft: ReceiptDraft(
+          storeName: s.storeName ?? '',
+          purchasedAt: s.purchasedAt,
+          lines: detail.lines,
+          subtotalCents: detail.subtotalCents,
+          taxCents: s.taxCents,
+          totalCents: s.totalCents,
+        ),
+      ),
+    ));
+    if (saved == true) {
+      setState(() {
+        _data = _load();
+      });
+    }
+  }
 
   Future<(ReceiptDetail, List<Purchase>)> _load() async =>
       (await widget.repo.receipt(widget.receiptId), await widget.repo.purchases());
@@ -116,6 +140,11 @@ class _ReceiptDetailScreenState extends State<ReceiptDetailScreen> {
           appBar: AppBar(
             title: Text(s.storeName ?? 'Receipt'),
             actions: [
+              IconButton(
+                tooltip: 'Edit receipt',
+                icon: const Icon(Icons.edit_outlined),
+                onPressed: () => _edit(detail),
+              ),
               IconButton(
                 tooltip: 'Compare with another receipt',
                 icon: const Icon(Icons.compare_arrows),

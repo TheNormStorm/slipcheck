@@ -9,16 +9,23 @@ import '../data/receipt_repository.dart';
 import 'line_item_row.dart';
 import 'scan_flow.dart';
 
-/// Testing UI: shows the parsed receipt so every field can be corrected
-/// before saving. For a scan, its photos can be added, retaken or removed,
-/// which reads the receipt again. Also used, starting empty, for manual entry.
+/// Shows the parsed receipt so every field can be corrected before saving.
+/// For a scan, its photos can be added, retaken or removed, which reads the
+/// receipt again. Also used, starting empty, for manual entry, and with
+/// [editingReceiptId] to correct a receipt that is already saved.
 class ReviewScreen extends StatefulWidget {
-  const ReviewScreen({super.key, required this.repo, this.draft, this.session})
-      : assert(draft != null || session != null);
+  const ReviewScreen({
+    super.key,
+    required this.repo,
+    this.draft,
+    this.session,
+    this.editingReceiptId,
+  }) : assert(draft != null || session != null);
 
   final ReceiptRepository repo;
   final ReceiptDraft? draft;
   final ScanSession? session;
+  final int? editingReceiptId;
 
   @override
   State<ReviewScreen> createState() => _ReviewScreenState();
@@ -32,6 +39,7 @@ class _ReviewScreenState extends State<ReviewScreen> {
   final _acceptedFuzzy = <DraftLine>{};
   bool _saving = false;
   bool _reading = false;
+  bool _saved = false;
 
   late ReceiptDraft _draft = widget.draft ?? widget.session!.toDraft();
 
@@ -96,7 +104,7 @@ class _ReviewScreenState extends State<ReviewScreen> {
       final paths = await capturePages(context, pageLimit: 1);
       if (paths != null) await _changePages((s) => s.replacePage(index, paths.first));
     } else if (action == 'remove') {
-      await _changePages((s) async => s.removePage(index));
+      await _changePages((s) => s.removePage(index));
     }
   }
 
@@ -181,7 +189,80 @@ class _ReviewScreenState extends State<ReviewScreen> {
 
   int get _itemsSum => draft.lines.fold(0, (s, l) => s + l.netCents);
 
+  /// Asks for a store name when none was read; returns false to stay.
+  Future<bool> _ensureStore() async {
+    if (draft.storeName.trim().isNotEmpty) return true;
+    final controller = TextEditingController();
+    final name = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Which store?'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          textCapitalization: TextCapitalization.words,
+          decoration: const InputDecoration(hintText: 'e.g. Market Basket'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, controller.text.trim()),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+    if (name == null || name.isEmpty) return false;
+    setState(() {
+      draft.storeName = name;
+      _generation++;
+    });
+    return true;
+  }
+
+  /// Warns when the same receipt looks already saved; returns false to stay.
+  Future<bool> _checkDuplicate() async {
+    final dup = await widget.repo.findDuplicate(draft, exceptId: widget.editingReceiptId);
+    if (dup == null || !mounted) return true;
+    final save = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Already saved?'),
+        content: Text('A receipt from ${dup.storeName ?? 'this store'} on '
+            '${DateFormat.yMMMd().format(dup.purchasedAt)} for \$${formatCents(dup.spentCents)} '
+            'is already saved. Saving again would count these items twice.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text("Don't save")),
+          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Save anyway')),
+        ],
+      ),
+    );
+    return save == true;
+  }
+
+  /// Leaving without saving: asks first, and removes the scan's photos.
+  Future<bool> _confirmDiscard() async {
+    final discard = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(widget.editingReceiptId == null ? 'Discard this receipt?' : 'Discard changes?'),
+        content: Text(widget.editingReceiptId == null
+            ? 'It has not been saved. Your corrections and the photos will be lost.'
+            : 'The saved receipt stays as it was.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Keep editing')),
+          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Discard')),
+        ],
+      ),
+    );
+    if (discard != true) return false;
+    await widget.session?.deleteFiles();
+    return true;
+  }
+
   Future<void> _save() async {
+    if (!await _ensureStore() || !mounted) return;
+    if (!await _checkDuplicate() || !mounted) return;
     setState(() => _saving = true);
     draft.lines.removeWhere((l) => l.name.trim().isEmpty);
     for (final line in draft.lines) {
@@ -192,7 +273,12 @@ class _ReviewScreenState extends State<ReviewScreen> {
       line.unitPriceCents =
           line.quantity == 1 ? null : (line.lineTotalCents / line.quantity).round();
     }
-    await widget.repo.saveReceipt(draft);
+    if (widget.editingReceiptId case final id?) {
+      await widget.repo.updateReceipt(id, draft);
+    } else {
+      await widget.repo.saveReceipt(draft);
+    }
+    _saved = true;
     if (mounted) Navigator.of(context).pop(true);
   }
 
@@ -276,8 +362,23 @@ class _ReviewScreenState extends State<ReviewScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    return PopScope(
+      canPop: _saved,
+      onPopInvokedWithResult: (didPop, _) async {
+        if (didPop) return;
+        if (await _confirmDiscard() && context.mounted) {
+          _saved = true;
+          Navigator.of(context).pop(false);
+        }
+      },
+      child: _scaffold(context, theme),
+    );
+  }
+
+  Widget _scaffold(BuildContext context, ThemeData theme) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Check receipt')),
+      appBar: AppBar(
+          title: Text(widget.editingReceiptId == null ? 'Check receipt' : 'Edit receipt')),
       body: ListView(
         key: ValueKey(_generation),
         padding: const EdgeInsets.only(bottom: 24),

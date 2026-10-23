@@ -100,4 +100,44 @@ void main() {
         quantityDetail(DraftLine(name: 'x', quantity: 2.17, unit: 'lb', lineTotalCents: 150)),
         '2.17 lb @ 0.69/lb');
   });
+
+  testWidgets('saving without a store asks for one', (tester) async {
+    await show(tester, ReceiptDraft(
+      storeName: '',
+      purchasedAt: DateTime(2026, 10, 18),
+      lines: [DraftLine(name: 'MILK', lineTotalCents: 469)],
+    ));
+    await tester.tap(find.text('Save receipt'));
+    await tester.pumpAndSettle();
+    expect(find.text('Which store?'), findsOneWidget);
+    await tester.enterText(find.byType(TextField).last, 'Market Basket');
+    await tester.tap(find.text('OK'));
+    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 100)));
+    await tester.pump();
+    expect((await tester.runAsync(repo.receipts))!.single.storeName, 'Market Basket');
+  });
+
+  testWidgets('going back asks before discarding', (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      home: Builder(
+        builder: (context) => TextButton(
+          onPressed: () => Navigator.push(context, MaterialPageRoute(
+            builder: (_) => ReviewScreen(
+              repo: repo,
+              draft: ReceiptDraft(storeName: 'X', purchasedAt: DateTime(2026, 10, 18), lines: []),
+            ),
+          )),
+          child: const Text('open'),
+        ),
+      ),
+    ));
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    expect(find.text('Discard this receipt?'), findsOneWidget);
+    await tester.tap(find.text('Keep editing'));
+    await tester.pumpAndSettle();
+    expect(find.text('Check receipt'), findsOneWidget);
+  });
 }

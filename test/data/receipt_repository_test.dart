@@ -218,4 +218,39 @@ void main() {
       expect(await db.select(db.stores).get(), isEmpty);
     });
   });
+
+  group('duplicates and editing', () {
+    ReceiptDraft mb({int? total, List<DraftLine>? lines}) => ReceiptDraft(
+          storeName: 'Market Basket',
+          purchasedAt: DateTime(2026, 10, 22, 18, 14),
+          lines: lines ?? [DraftLine(name: 'MILK', lineTotalCents: 469)],
+          totalCents: total,
+        );
+
+    test('same store, day and total is a duplicate', () async {
+      await repo.saveReceipt(mb(total: 36290));
+      expect(await repo.findDuplicate(mb(total: 36290)), isNotNull);
+      expect(await repo.findDuplicate(mb(total: 1000)), isNull);
+      final otherDay = mb(total: 36290)..purchasedAt = DateTime(2026, 10, 23);
+      expect(await repo.findDuplicate(otherDay), isNull);
+    });
+
+    test('without totals, the items total decides', () async {
+      await repo.saveReceipt(mb());
+      expect(await repo.findDuplicate(mb()), isNotNull);
+    });
+
+    test('editing replaces the lines and details, not the receipt', () async {
+      final id = await repo.saveReceipt(mb(total: 469));
+      expect(await repo.findDuplicate(mb(total: 469), exceptId: id), isNull);
+      await repo.updateReceipt(id, mb(total: 818, lines: [
+        DraftLine(name: 'MILK', lineTotalCents: 469),
+        DraftLine(name: 'BREAD', lineTotalCents: 349),
+      ]));
+      final detail = await repo.receipt(id);
+      expect(detail.lines.map((l) => l.name), ['MILK', 'BREAD']);
+      expect(detail.summary.totalCents, 818);
+      expect(await repo.receipts(), hasLength(1));
+    });
+  });
 }
