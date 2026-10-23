@@ -74,6 +74,16 @@ class ReceiptParser {
   // "6 @ 2/6.00": six bought at a 2-for-6.00 price.
   static final _multiBuyQty = RegExp(
       r'(?:^|\s)(\d{1,3})\s*@\s*(\d{1,2})\s*/\s*\$?(\d{1,5}[.,]\d{2})');
+  // "2/5.00" or "2 FOR $5.00": a deal price for a number of items.
+  static final _dealQty = RegExp(
+      r'(?:^|\s)(\d{1,2})\s*(?:/|for)\s*\$?(\d{1,4}[.,]\d{2})(?=\s|$)',
+      caseSensitive: false);
+  // Quantity before the name: "2 x MILK 4.69  9.38", "3 BANANA @ 0.25  0.75",
+  // "2 x MILK  9.38".
+  static final _qtyFirst = RegExp(
+      r'^(\d{1,3})\s*(?:[x×]\s+)?([A-Za-z][^@]*?)\s*(?:@\s*)?(?:\$?(\d{1,5}[.,]\d{2})\s+)?'
+      r'\$?(\d{1,6}[.,]\d{2})\s*[A-Z*]?$',
+      caseSensitive: false);
   // "2 @ 1.99", "2 x $1.99"
   static final _countQty = RegExp(
       r'(?:^|\s)(\d{1,3})\s*(?:@|x|X|×)\s*\$?(\d{1,5}[.,]\d{2})(?:\s*(?:ea|each))?',
@@ -111,11 +121,23 @@ class ReceiptParser {
   static final _discount = RegExp(
       r'\b(discount|savings?|coupon|promo|instant\s*saving|multi\s*buy|price\s*reduction)\b',
       caseSensitive: false);
+  // Payment and loyalty lines. Only at the start of a row, so items such as
+  // "CARD - BIRTHDAY" or "CASHEWS" are kept.
   static final _nonItem = RegExp(
-      r'\b(change|cash|visa|mastercard|amex|debit|credit|tend(?:er|ered)?|paid|'
-      r'card|auth|approved|items?\s*sold|points|balance|rounding|deposit\s*refund|'
-      r'loyalty|member)\b',
+      r'^\s*(cash|visa|mastercard|amex|discover|debit|credit|tend(?:er|ered)?|paid|'
+      r'auth|approved|items?\s*sold|points|balance|rounding|deposit\s*refund|loyalty|'
+      r'member\s*(?:#|no|number|id)|card\s*(?:#|no|number|type|name|ending))\b',
       caseSensitive: false);
+  // "TOTAL SAVINGS", "YOU SAVED": summaries of discounts already on the lines.
+  static final _savingsSummary = RegExp(
+      r'^\s*(total\s+(savings?|discounts?|saved)|you\s+saved|your\s+savings|'
+      r'savings\s+total|today.?s\s+savings)',
+      caseSensitive: false);
+  // A TOTAL that is not the amount paid: "TOTAL TAX", "TOTAL ITEMS".
+  static final _notTotal = RegExp(
+      r'\b(savings?|saved|discounts?|items?|number|count|tendered|tax|points)\b',
+      caseSensitive: false);
+  static final _return = RegExp(r'^\s*(return|refund|rtn|void)\b\s*', caseSensitive: false);
   static final _phoneOrAddress = RegExp(
       r'(\(?\d{3}\)?[\s.-]\d{3}[\s.-]\d{4})|(\b\d+\s+\w+\s+(st|street|rd|road|ave|avenue|blvd|dr|drive|way)\b)',
       caseSensitive: false);
@@ -126,8 +148,12 @@ class ReceiptParser {
       for (final r in rows)
         if (r.trim().isNotEmpty)
           r
-              // A count printed in its own column before the name: "1  BOTTLE DEPOSIT".
-              .replaceFirst(RegExp(r'^\s*\d{1,3}\s{2,}(?=[A-Za-z])'), '')
+              // A count printed in its own column before the name: "1  BOTTLE
+              // DEPOSIT" (but not the 12 of "12  PK COKE").
+              .replaceFirst(
+                  RegExp(r'^\s*\d{1,3}\s{2,}(?=[A-Za-z])(?!(pk|ct|pack|oz|lbs?|g|kg|ml|l|ltr|count|cnt|ea)\b)',
+                      caseSensitive: false),
+                  '')
               .replaceAll(RegExp(r'\s+'), ' ')
               // OCR sometimes splits an amount: "0. 79", "1 .99".
               .replaceAllMapped(RegExp(r'(\d) ?([.,]) ?(\d{2})\b'),
@@ -176,8 +202,40 @@ class ReceiptParser {
       return true;
     }
 
+    var rowsAfterTotal = 0;
     for (final row in cleaned) {
-      if (seenTotal) break; // payment section follows the total.
+      if (seenTotal) {
+        // The payment section follows the total; only a tax line printed
+        // right under it is still read.
+        if (++rowsAfterTotal > 3 || receipt.taxCents != null) break;
+        final m = _trailingAmount.firstMatch(row);
+        if (m != null && _tax.hasMatch(m.group(1)!) && !_hasItemWords(m.group(1)!)) {
+          receipt.taxCents = parseCents(m.group(2)!);
+        }
+        continue;
+      }
+      if (_savingsSummary.hasMatch(row)) continue;
+
+      final first = _qtyFirst.firstMatch(row);
+      if (first != null && !_codePrefix.hasMatch(row)) {
+        final count = double.parse(first.group(1)!);
+        final total = parseCents(first.group(4)!)!;
+        final unit = first.group(3) == null ? null : parseCents(first.group(3)!);
+        final name = first.group(2)!.trim();
+        final looksLikeQty = row.contains(RegExp(r'^\d{1,3}\s*[x×]\s', caseSensitive: false)) ||
+            (unit != null && (count * unit - total).abs() <= 1);
+        if (looksLikeQty && count > 1 && _letters.hasMatch(name)) {
+          add(
+            ParsedLine(rawText: _cleanName(name), lineTotalCents: total)
+              ..quantity = count
+              ..unitPriceCents = unit ?? (total / count).round(),
+            name,
+          );
+          pendingNames.clear();
+          pendingQty = null;
+          continue;
+        }
+      }
 
       // Read and remove "2 @ 1.99" first, so its unit price is not mistaken
       // for the row's line total.
@@ -214,7 +272,7 @@ class ReceiptParser {
         pendingNames.clear();
         continue;
       }
-      if (amount != null && _total.hasMatch(desc)) {
+      if (amount != null && _total.hasMatch(desc) && !_notTotal.hasMatch(desc)) {
         receipt.totalCents = amount;
         seenTotal = true;
         continue;
@@ -223,6 +281,20 @@ class ReceiptParser {
           _tax.hasMatch(desc) &&
           (desc.contains('%') || !_hasItemWords(desc))) {
         receipt.taxCents = (receipt.taxCents ?? 0) + amount;
+        continue;
+      }
+      if (amount != null && amount < 0 && _return.hasMatch(desc) &&
+          _letters.hasMatch(desc.replaceFirst(_return, ''))) {
+        // A returned item: a line of its own with a negative quantity, so it
+        // nets out against the purchase in every comparison.
+        final name = desc.replaceFirst(_return, '');
+        add(
+          ParsedLine(rawText: _cleanName(name), lineTotalCents: amount)
+            ..quantity = -1
+            ..unitPriceCents = -amount,
+          name,
+        );
+        pendingNames.clear();
         continue;
       }
       if (amount != null &&
@@ -346,6 +418,13 @@ class ReceiptParser {
       final dealPrice = parseCents(mb.group(3)!)!;
       return _Qty(double.parse(mb.group(1)!), 'each', dealPrice / int.parse(mb.group(2)!));
     }
+    final d = _dealQty.firstMatch(row);
+    if (d != null) {
+      final count = int.parse(d.group(1)!);
+      if (count > 1) {
+        return _Qty(count.toDouble(), 'each', parseCents(d.group(2)!)! / count);
+      }
+    }
     final c = _countQty.firstMatch(row);
     if (c != null) {
       return _Qty(double.parse(c.group(1)!), 'each', parseCents(c.group(2)!)!.toDouble());
@@ -357,6 +436,7 @@ class ReceiptParser {
       .replaceAll(_weightQty, ' ')
       .replaceAll(_poundQty, ' ')
       .replaceAll(_multiBuyQty, ' ')
+      .replaceAll(_dealQty, ' ')
       .replaceAll(_countQty, ' ')
       .replaceAll(RegExp(r'\s+'), ' ')
       .trim();
@@ -393,7 +473,14 @@ class ReceiptParser {
   String? _findStore(List<String> rows) {
     // First row near the top that reads like a name rather than an address,
     // phone number, date or amount.
-    for (final row in rows.take(6)) {
+    for (final raw in rows.take(6)) {
+      // Logo and greeting text around the store name.
+      final row = raw.replaceFirst(RegExp(r'^\s*welcome\s+to\b\s*', caseSensitive: false), '');
+      if (RegExp(r'^(welcome|thank you|thanks|receipt|sales? receipt|customer copy|store\s*#?\s*\d*)\W*$',
+              caseSensitive: false)
+          .hasMatch(row)) {
+        continue;
+      }
       if (!_letters.hasMatch(row)) continue;
       if (_phoneOrAddress.hasMatch(row)) continue;
       if (_trailingAmount.hasMatch(row)) continue;

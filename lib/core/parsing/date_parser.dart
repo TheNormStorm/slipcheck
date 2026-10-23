@@ -4,7 +4,9 @@ const _months = {
 };
 
 final _iso = RegExp(r'\b(20\d{2})[-/.](\d{1,2})[-/.](\d{1,2})\b');
-final _numeric = RegExp(r'\b(\d{1,2})[-/.](\d{1,2})[-/.](\d{2}|\d{4})\b');
+// Day, month and year with one separator throughout: "10/22/26", not the
+// price-like "2/5.00".
+final _numeric = RegExp(r'\b(\d{1,2})([-/.])(\d{1,2})\2(\d{2}|\d{4})\b(?![.,]\d)');
 final _dayMonthName = RegExp(
     r'\b(\d{1,2})[\s-]*(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?[\s,-]*(\d{4}|\d{2})\b',
     caseSensitive: false);
@@ -39,7 +41,7 @@ DateTime? _parseRow(String row, bool dayFirst) {
   }
   m = _numeric.firstMatch(row);
   if (m != null) {
-    final a = _i(m[1]), b = _i(m[2]), y = _year(m[3]!);
+    final a = _i(m[1]), b = _i(m[3]), y = _year(m[4]!);
     final bool dayIsFirst;
     if (a > 12) {
       dayIsFirst = true;
