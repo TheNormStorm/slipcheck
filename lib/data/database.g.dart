@@ -1302,6 +1302,17 @@ class $ProductsTable extends Products with TableInfo<$ProductsTable, Product> {
     type: DriftSqlType.int,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _categoryMeta = const VerificationMeta(
+    'category',
+  );
+  @override
+  late final GeneratedColumn<String> category = GeneratedColumn<String>(
+    'category',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -1310,6 +1321,7 @@ class $ProductsTable extends Products with TableInfo<$ProductsTable, Product> {
     sizeValue,
     sizeUnit,
     packCount,
+    category,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -1366,6 +1378,12 @@ class $ProductsTable extends Products with TableInfo<$ProductsTable, Product> {
         packCount.isAcceptableOrUnknown(data['pack_count']!, _packCountMeta),
       );
     }
+    if (data.containsKey('category')) {
+      context.handle(
+        _categoryMeta,
+        category.isAcceptableOrUnknown(data['category']!, _categoryMeta),
+      );
+    }
     return context;
   }
 
@@ -1399,6 +1417,10 @@ class $ProductsTable extends Products with TableInfo<$ProductsTable, Product> {
         DriftSqlType.int,
         data['${effectivePrefix}pack_count'],
       ),
+      category: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}category'],
+      ),
     );
   }
 
@@ -1417,6 +1439,10 @@ class Product extends DataClass implements Insertable<Product> {
   final double? sizeValue;
   final String? sizeUnit;
   final int? packCount;
+
+  /// `Category.name`; set from the receipt's department heading or keyword
+  /// rules when the product is created, and changeable by the user.
+  final String? category;
   const Product({
     required this.id,
     required this.canonicalKey,
@@ -1424,6 +1450,7 @@ class Product extends DataClass implements Insertable<Product> {
     this.sizeValue,
     this.sizeUnit,
     this.packCount,
+    this.category,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -1439,6 +1466,9 @@ class Product extends DataClass implements Insertable<Product> {
     }
     if (!nullToAbsent || packCount != null) {
       map['pack_count'] = Variable<int>(packCount);
+    }
+    if (!nullToAbsent || category != null) {
+      map['category'] = Variable<String>(category);
     }
     return map;
   }
@@ -1457,6 +1487,9 @@ class Product extends DataClass implements Insertable<Product> {
       packCount: packCount == null && nullToAbsent
           ? const Value.absent()
           : Value(packCount),
+      category: category == null && nullToAbsent
+          ? const Value.absent()
+          : Value(category),
     );
   }
 
@@ -1472,6 +1505,7 @@ class Product extends DataClass implements Insertable<Product> {
       sizeValue: serializer.fromJson<double?>(json['sizeValue']),
       sizeUnit: serializer.fromJson<String?>(json['sizeUnit']),
       packCount: serializer.fromJson<int?>(json['packCount']),
+      category: serializer.fromJson<String?>(json['category']),
     );
   }
   @override
@@ -1484,6 +1518,7 @@ class Product extends DataClass implements Insertable<Product> {
       'sizeValue': serializer.toJson<double?>(sizeValue),
       'sizeUnit': serializer.toJson<String?>(sizeUnit),
       'packCount': serializer.toJson<int?>(packCount),
+      'category': serializer.toJson<String?>(category),
     };
   }
 
@@ -1494,6 +1529,7 @@ class Product extends DataClass implements Insertable<Product> {
     Value<double?> sizeValue = const Value.absent(),
     Value<String?> sizeUnit = const Value.absent(),
     Value<int?> packCount = const Value.absent(),
+    Value<String?> category = const Value.absent(),
   }) => Product(
     id: id ?? this.id,
     canonicalKey: canonicalKey ?? this.canonicalKey,
@@ -1501,6 +1537,7 @@ class Product extends DataClass implements Insertable<Product> {
     sizeValue: sizeValue.present ? sizeValue.value : this.sizeValue,
     sizeUnit: sizeUnit.present ? sizeUnit.value : this.sizeUnit,
     packCount: packCount.present ? packCount.value : this.packCount,
+    category: category.present ? category.value : this.category,
   );
   Product copyWithCompanion(ProductsCompanion data) {
     return Product(
@@ -1514,6 +1551,7 @@ class Product extends DataClass implements Insertable<Product> {
       sizeValue: data.sizeValue.present ? data.sizeValue.value : this.sizeValue,
       sizeUnit: data.sizeUnit.present ? data.sizeUnit.value : this.sizeUnit,
       packCount: data.packCount.present ? data.packCount.value : this.packCount,
+      category: data.category.present ? data.category.value : this.category,
     );
   }
 
@@ -1525,7 +1563,8 @@ class Product extends DataClass implements Insertable<Product> {
           ..write('displayName: $displayName, ')
           ..write('sizeValue: $sizeValue, ')
           ..write('sizeUnit: $sizeUnit, ')
-          ..write('packCount: $packCount')
+          ..write('packCount: $packCount, ')
+          ..write('category: $category')
           ..write(')'))
         .toString();
   }
@@ -1538,6 +1577,7 @@ class Product extends DataClass implements Insertable<Product> {
     sizeValue,
     sizeUnit,
     packCount,
+    category,
   );
   @override
   bool operator ==(Object other) =>
@@ -1548,7 +1588,8 @@ class Product extends DataClass implements Insertable<Product> {
           other.displayName == this.displayName &&
           other.sizeValue == this.sizeValue &&
           other.sizeUnit == this.sizeUnit &&
-          other.packCount == this.packCount);
+          other.packCount == this.packCount &&
+          other.category == this.category);
 }
 
 class ProductsCompanion extends UpdateCompanion<Product> {
@@ -1558,6 +1599,7 @@ class ProductsCompanion extends UpdateCompanion<Product> {
   final Value<double?> sizeValue;
   final Value<String?> sizeUnit;
   final Value<int?> packCount;
+  final Value<String?> category;
   const ProductsCompanion({
     this.id = const Value.absent(),
     this.canonicalKey = const Value.absent(),
@@ -1565,6 +1607,7 @@ class ProductsCompanion extends UpdateCompanion<Product> {
     this.sizeValue = const Value.absent(),
     this.sizeUnit = const Value.absent(),
     this.packCount = const Value.absent(),
+    this.category = const Value.absent(),
   });
   ProductsCompanion.insert({
     this.id = const Value.absent(),
@@ -1573,6 +1616,7 @@ class ProductsCompanion extends UpdateCompanion<Product> {
     this.sizeValue = const Value.absent(),
     this.sizeUnit = const Value.absent(),
     this.packCount = const Value.absent(),
+    this.category = const Value.absent(),
   }) : canonicalKey = Value(canonicalKey),
        displayName = Value(displayName);
   static Insertable<Product> custom({
@@ -1582,6 +1626,7 @@ class ProductsCompanion extends UpdateCompanion<Product> {
     Expression<double>? sizeValue,
     Expression<String>? sizeUnit,
     Expression<int>? packCount,
+    Expression<String>? category,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -1590,6 +1635,7 @@ class ProductsCompanion extends UpdateCompanion<Product> {
       if (sizeValue != null) 'size_value': sizeValue,
       if (sizeUnit != null) 'size_unit': sizeUnit,
       if (packCount != null) 'pack_count': packCount,
+      if (category != null) 'category': category,
     });
   }
 
@@ -1600,6 +1646,7 @@ class ProductsCompanion extends UpdateCompanion<Product> {
     Value<double?>? sizeValue,
     Value<String?>? sizeUnit,
     Value<int?>? packCount,
+    Value<String?>? category,
   }) {
     return ProductsCompanion(
       id: id ?? this.id,
@@ -1608,6 +1655,7 @@ class ProductsCompanion extends UpdateCompanion<Product> {
       sizeValue: sizeValue ?? this.sizeValue,
       sizeUnit: sizeUnit ?? this.sizeUnit,
       packCount: packCount ?? this.packCount,
+      category: category ?? this.category,
     );
   }
 
@@ -1632,6 +1680,9 @@ class ProductsCompanion extends UpdateCompanion<Product> {
     if (packCount.present) {
       map['pack_count'] = Variable<int>(packCount.value);
     }
+    if (category.present) {
+      map['category'] = Variable<String>(category.value);
+    }
     return map;
   }
 
@@ -1643,7 +1694,8 @@ class ProductsCompanion extends UpdateCompanion<Product> {
           ..write('displayName: $displayName, ')
           ..write('sizeValue: $sizeValue, ')
           ..write('sizeUnit: $sizeUnit, ')
-          ..write('packCount: $packCount')
+          ..write('packCount: $packCount, ')
+          ..write('category: $category')
           ..write(')'))
         .toString();
   }
@@ -2083,6 +2135,26 @@ class $LineItemsTable extends LineItems
     requiredDuringInsert: false,
     defaultValue: const Constant(0),
   );
+  static const VerificationMeta _codeMeta = const VerificationMeta('code');
+  @override
+  late final GeneratedColumn<String> code = GeneratedColumn<String>(
+    'code',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _sectionMeta = const VerificationMeta(
+    'section',
+  );
+  @override
+  late final GeneratedColumn<String> section = GeneratedColumn<String>(
+    'section',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -2095,6 +2167,8 @@ class $LineItemsTable extends LineItems
     unitPriceCents,
     lineTotalCents,
     discountCents,
+    code,
+    section,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -2182,6 +2256,18 @@ class $LineItemsTable extends LineItems
         ),
       );
     }
+    if (data.containsKey('code')) {
+      context.handle(
+        _codeMeta,
+        code.isAcceptableOrUnknown(data['code']!, _codeMeta),
+      );
+    }
+    if (data.containsKey('section')) {
+      context.handle(
+        _sectionMeta,
+        section.isAcceptableOrUnknown(data['section']!, _sectionMeta),
+      );
+    }
     return context;
   }
 
@@ -2231,6 +2317,14 @@ class $LineItemsTable extends LineItems
         DriftSqlType.int,
         data['${effectivePrefix}discount_cents'],
       )!,
+      code: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}code'],
+      ),
+      section: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}section'],
+      ),
     );
   }
 
@@ -2255,6 +2349,12 @@ class LineItem extends DataClass implements Insertable<LineItem> {
   final int? unitPriceCents;
   final int lineTotalCents;
   final int discountCents;
+
+  /// Barcode (UPC/EAN) or produce PLU printed on the line, when readable.
+  final String? code;
+
+  /// Department heading the line was printed under ("PRODUCE DEPT").
+  final String? section;
   const LineItem({
     required this.id,
     required this.receiptId,
@@ -2266,6 +2366,8 @@ class LineItem extends DataClass implements Insertable<LineItem> {
     this.unitPriceCents,
     required this.lineTotalCents,
     required this.discountCents,
+    this.code,
+    this.section,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -2284,6 +2386,12 @@ class LineItem extends DataClass implements Insertable<LineItem> {
     }
     map['line_total_cents'] = Variable<int>(lineTotalCents);
     map['discount_cents'] = Variable<int>(discountCents);
+    if (!nullToAbsent || code != null) {
+      map['code'] = Variable<String>(code);
+    }
+    if (!nullToAbsent || section != null) {
+      map['section'] = Variable<String>(section);
+    }
     return map;
   }
 
@@ -2303,6 +2411,10 @@ class LineItem extends DataClass implements Insertable<LineItem> {
           : Value(unitPriceCents),
       lineTotalCents: Value(lineTotalCents),
       discountCents: Value(discountCents),
+      code: code == null && nullToAbsent ? const Value.absent() : Value(code),
+      section: section == null && nullToAbsent
+          ? const Value.absent()
+          : Value(section),
     );
   }
 
@@ -2322,6 +2434,8 @@ class LineItem extends DataClass implements Insertable<LineItem> {
       unitPriceCents: serializer.fromJson<int?>(json['unitPriceCents']),
       lineTotalCents: serializer.fromJson<int>(json['lineTotalCents']),
       discountCents: serializer.fromJson<int>(json['discountCents']),
+      code: serializer.fromJson<String?>(json['code']),
+      section: serializer.fromJson<String?>(json['section']),
     );
   }
   @override
@@ -2338,6 +2452,8 @@ class LineItem extends DataClass implements Insertable<LineItem> {
       'unitPriceCents': serializer.toJson<int?>(unitPriceCents),
       'lineTotalCents': serializer.toJson<int>(lineTotalCents),
       'discountCents': serializer.toJson<int>(discountCents),
+      'code': serializer.toJson<String?>(code),
+      'section': serializer.toJson<String?>(section),
     };
   }
 
@@ -2352,6 +2468,8 @@ class LineItem extends DataClass implements Insertable<LineItem> {
     Value<int?> unitPriceCents = const Value.absent(),
     int? lineTotalCents,
     int? discountCents,
+    Value<String?> code = const Value.absent(),
+    Value<String?> section = const Value.absent(),
   }) => LineItem(
     id: id ?? this.id,
     receiptId: receiptId ?? this.receiptId,
@@ -2365,6 +2483,8 @@ class LineItem extends DataClass implements Insertable<LineItem> {
         : this.unitPriceCents,
     lineTotalCents: lineTotalCents ?? this.lineTotalCents,
     discountCents: discountCents ?? this.discountCents,
+    code: code.present ? code.value : this.code,
+    section: section.present ? section.value : this.section,
   );
   LineItem copyWithCompanion(LineItemsCompanion data) {
     return LineItem(
@@ -2384,6 +2504,8 @@ class LineItem extends DataClass implements Insertable<LineItem> {
       discountCents: data.discountCents.present
           ? data.discountCents.value
           : this.discountCents,
+      code: data.code.present ? data.code.value : this.code,
+      section: data.section.present ? data.section.value : this.section,
     );
   }
 
@@ -2399,7 +2521,9 @@ class LineItem extends DataClass implements Insertable<LineItem> {
           ..write('unit: $unit, ')
           ..write('unitPriceCents: $unitPriceCents, ')
           ..write('lineTotalCents: $lineTotalCents, ')
-          ..write('discountCents: $discountCents')
+          ..write('discountCents: $discountCents, ')
+          ..write('code: $code, ')
+          ..write('section: $section')
           ..write(')'))
         .toString();
   }
@@ -2416,6 +2540,8 @@ class LineItem extends DataClass implements Insertable<LineItem> {
     unitPriceCents,
     lineTotalCents,
     discountCents,
+    code,
+    section,
   );
   @override
   bool operator ==(Object other) =>
@@ -2430,7 +2556,9 @@ class LineItem extends DataClass implements Insertable<LineItem> {
           other.unit == this.unit &&
           other.unitPriceCents == this.unitPriceCents &&
           other.lineTotalCents == this.lineTotalCents &&
-          other.discountCents == this.discountCents);
+          other.discountCents == this.discountCents &&
+          other.code == this.code &&
+          other.section == this.section);
 }
 
 class LineItemsCompanion extends UpdateCompanion<LineItem> {
@@ -2444,6 +2572,8 @@ class LineItemsCompanion extends UpdateCompanion<LineItem> {
   final Value<int?> unitPriceCents;
   final Value<int> lineTotalCents;
   final Value<int> discountCents;
+  final Value<String?> code;
+  final Value<String?> section;
   const LineItemsCompanion({
     this.id = const Value.absent(),
     this.receiptId = const Value.absent(),
@@ -2455,6 +2585,8 @@ class LineItemsCompanion extends UpdateCompanion<LineItem> {
     this.unitPriceCents = const Value.absent(),
     this.lineTotalCents = const Value.absent(),
     this.discountCents = const Value.absent(),
+    this.code = const Value.absent(),
+    this.section = const Value.absent(),
   });
   LineItemsCompanion.insert({
     this.id = const Value.absent(),
@@ -2467,6 +2599,8 @@ class LineItemsCompanion extends UpdateCompanion<LineItem> {
     this.unitPriceCents = const Value.absent(),
     required int lineTotalCents,
     this.discountCents = const Value.absent(),
+    this.code = const Value.absent(),
+    this.section = const Value.absent(),
   }) : receiptId = Value(receiptId),
        position = Value(position),
        rawText = Value(rawText),
@@ -2482,6 +2616,8 @@ class LineItemsCompanion extends UpdateCompanion<LineItem> {
     Expression<int>? unitPriceCents,
     Expression<int>? lineTotalCents,
     Expression<int>? discountCents,
+    Expression<String>? code,
+    Expression<String>? section,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -2494,6 +2630,8 @@ class LineItemsCompanion extends UpdateCompanion<LineItem> {
       if (unitPriceCents != null) 'unit_price_cents': unitPriceCents,
       if (lineTotalCents != null) 'line_total_cents': lineTotalCents,
       if (discountCents != null) 'discount_cents': discountCents,
+      if (code != null) 'code': code,
+      if (section != null) 'section': section,
     });
   }
 
@@ -2508,6 +2646,8 @@ class LineItemsCompanion extends UpdateCompanion<LineItem> {
     Value<int?>? unitPriceCents,
     Value<int>? lineTotalCents,
     Value<int>? discountCents,
+    Value<String?>? code,
+    Value<String?>? section,
   }) {
     return LineItemsCompanion(
       id: id ?? this.id,
@@ -2520,6 +2660,8 @@ class LineItemsCompanion extends UpdateCompanion<LineItem> {
       unitPriceCents: unitPriceCents ?? this.unitPriceCents,
       lineTotalCents: lineTotalCents ?? this.lineTotalCents,
       discountCents: discountCents ?? this.discountCents,
+      code: code ?? this.code,
+      section: section ?? this.section,
     );
   }
 
@@ -2556,6 +2698,12 @@ class LineItemsCompanion extends UpdateCompanion<LineItem> {
     if (discountCents.present) {
       map['discount_cents'] = Variable<int>(discountCents.value);
     }
+    if (code.present) {
+      map['code'] = Variable<String>(code.value);
+    }
+    if (section.present) {
+      map['section'] = Variable<String>(section.value);
+    }
     return map;
   }
 
@@ -2571,7 +2719,9 @@ class LineItemsCompanion extends UpdateCompanion<LineItem> {
           ..write('unit: $unit, ')
           ..write('unitPriceCents: $unitPriceCents, ')
           ..write('lineTotalCents: $lineTotalCents, ')
-          ..write('discountCents: $discountCents')
+          ..write('discountCents: $discountCents, ')
+          ..write('code: $code, ')
+          ..write('section: $section')
           ..write(')'))
         .toString();
   }
@@ -3898,6 +4048,7 @@ typedef $$ProductsTableCreateCompanionBuilder =
       Value<double?> sizeValue,
       Value<String?> sizeUnit,
       Value<int?> packCount,
+      Value<String?> category,
     });
 typedef $$ProductsTableUpdateCompanionBuilder =
     ProductsCompanion Function({
@@ -3907,6 +4058,7 @@ typedef $$ProductsTableUpdateCompanionBuilder =
       Value<double?> sizeValue,
       Value<String?> sizeUnit,
       Value<int?> packCount,
+      Value<String?> category,
     });
 
 final class $$ProductsTableReferences
@@ -3986,6 +4138,11 @@ class $$ProductsTableFilterComposer
 
   ColumnFilters<int> get packCount => $composableBuilder(
     column: $table.packCount,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get category => $composableBuilder(
+    column: $table.category,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -4078,6 +4235,11 @@ class $$ProductsTableOrderingComposer
     column: $table.packCount,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get category => $composableBuilder(
+    column: $table.category,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$ProductsTableAnnotationComposer
@@ -4110,6 +4272,9 @@ class $$ProductsTableAnnotationComposer
 
   GeneratedColumn<int> get packCount =>
       $composableBuilder(column: $table.packCount, builder: (column) => column);
+
+  GeneratedColumn<String> get category =>
+      $composableBuilder(column: $table.category, builder: (column) => column);
 
   Expression<T> productAliasesRefs<T extends Object>(
     Expression<T> Function($$ProductAliasesTableAnnotationComposer a) f,
@@ -4196,6 +4361,7 @@ class $$ProductsTableTableManager
                 Value<double?> sizeValue = const Value.absent(),
                 Value<String?> sizeUnit = const Value.absent(),
                 Value<int?> packCount = const Value.absent(),
+                Value<String?> category = const Value.absent(),
               }) => ProductsCompanion(
                 id: id,
                 canonicalKey: canonicalKey,
@@ -4203,6 +4369,7 @@ class $$ProductsTableTableManager
                 sizeValue: sizeValue,
                 sizeUnit: sizeUnit,
                 packCount: packCount,
+                category: category,
               ),
           createCompanionCallback:
               ({
@@ -4212,6 +4379,7 @@ class $$ProductsTableTableManager
                 Value<double?> sizeValue = const Value.absent(),
                 Value<String?> sizeUnit = const Value.absent(),
                 Value<int?> packCount = const Value.absent(),
+                Value<String?> category = const Value.absent(),
               }) => ProductsCompanion.insert(
                 id: id,
                 canonicalKey: canonicalKey,
@@ -4219,6 +4387,7 @@ class $$ProductsTableTableManager
                 sizeValue: sizeValue,
                 sizeUnit: sizeUnit,
                 packCount: packCount,
+                category: category,
               ),
           withReferenceMapper: (p0) => p0
               .map(
@@ -4701,6 +4870,8 @@ typedef $$LineItemsTableCreateCompanionBuilder =
       Value<int?> unitPriceCents,
       required int lineTotalCents,
       Value<int> discountCents,
+      Value<String?> code,
+      Value<String?> section,
     });
 typedef $$LineItemsTableUpdateCompanionBuilder =
     LineItemsCompanion Function({
@@ -4714,6 +4885,8 @@ typedef $$LineItemsTableUpdateCompanionBuilder =
       Value<int?> unitPriceCents,
       Value<int> lineTotalCents,
       Value<int> discountCents,
+      Value<String?> code,
+      Value<String?> section,
     });
 
 final class $$LineItemsTableReferences
@@ -4801,6 +4974,16 @@ class $$LineItemsTableFilterComposer
 
   ColumnFilters<int> get discountCents => $composableBuilder(
     column: $table.discountCents,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get code => $composableBuilder(
+    column: $table.code,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get section => $composableBuilder(
+    column: $table.section,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -4900,6 +5083,16 @@ class $$LineItemsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get code => $composableBuilder(
+    column: $table.code,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get section => $composableBuilder(
+    column: $table.section,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$ReceiptsTableOrderingComposer get receiptId {
     final $$ReceiptsTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -4986,6 +5179,12 @@ class $$LineItemsTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<String> get code =>
+      $composableBuilder(column: $table.code, builder: (column) => column);
+
+  GeneratedColumn<String> get section =>
+      $composableBuilder(column: $table.section, builder: (column) => column);
+
   $$ReceiptsTableAnnotationComposer get receiptId {
     final $$ReceiptsTableAnnotationComposer composer = $composerBuilder(
       composer: this,
@@ -5071,6 +5270,8 @@ class $$LineItemsTableTableManager
                 Value<int?> unitPriceCents = const Value.absent(),
                 Value<int> lineTotalCents = const Value.absent(),
                 Value<int> discountCents = const Value.absent(),
+                Value<String?> code = const Value.absent(),
+                Value<String?> section = const Value.absent(),
               }) => LineItemsCompanion(
                 id: id,
                 receiptId: receiptId,
@@ -5082,6 +5283,8 @@ class $$LineItemsTableTableManager
                 unitPriceCents: unitPriceCents,
                 lineTotalCents: lineTotalCents,
                 discountCents: discountCents,
+                code: code,
+                section: section,
               ),
           createCompanionCallback:
               ({
@@ -5095,6 +5298,8 @@ class $$LineItemsTableTableManager
                 Value<int?> unitPriceCents = const Value.absent(),
                 required int lineTotalCents,
                 Value<int> discountCents = const Value.absent(),
+                Value<String?> code = const Value.absent(),
+                Value<String?> section = const Value.absent(),
               }) => LineItemsCompanion.insert(
                 id: id,
                 receiptId: receiptId,
@@ -5106,6 +5311,8 @@ class $$LineItemsTableTableManager
                 unitPriceCents: unitPriceCents,
                 lineTotalCents: lineTotalCents,
                 discountCents: discountCents,
+                code: code,
+                section: section,
               ),
           withReferenceMapper: (p0) => p0
               .map(

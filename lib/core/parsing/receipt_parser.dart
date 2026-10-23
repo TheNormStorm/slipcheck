@@ -1,3 +1,4 @@
+import '../categories.dart';
 import '../money.dart';
 import 'date_parser.dart';
 
@@ -22,6 +23,12 @@ class ParsedLine {
 
   /// Positive number of cents taken off this line by a following discount row.
   int discountCents;
+
+  /// Barcode (UPC/EAN) or produce PLU printed before the name.
+  String? code;
+
+  /// Department heading the line was printed under ("PRODUCE DEPT").
+  String? section;
 
   int get netCents => lineTotalCents - discountCents;
 }
@@ -140,7 +147,15 @@ class ReceiptParser {
     // price was not read, or the second line of a wrapped name.
     final pendingNames = <String>[];
     _Qty? pendingQty;
+    String? section;
     var seenTotal = false;
+
+    void add(ParsedLine line, String nameAsPrinted) {
+      line
+        ..code ??= _codeOf(nameAsPrinted)
+        ..section = section;
+      receipt.items.add(line);
+    }
 
     ParsedLine? lastUnquantified() {
       if (receipt.items.isEmpty) return null;
@@ -182,8 +197,9 @@ class ReceiptParser {
             desc = '';
           } else if (attachToLast(loose)) {
             continue;
-          } else if (_createFromPending(receipt, pendingNames, loose)) {
+          } else if (_fromPending(pendingNames, loose) case final made?) {
             // "1 @ 2.99" read as "102.99" under a name whose price was lost.
+            add(made.$1, made.$2);
             pendingQty = null;
             continue;
           } else if (amount == null && loose.unit != 'each') {
@@ -227,18 +243,28 @@ class ReceiptParser {
           // Quantity on its own row. It describes the item above when that
           // item's total matches ("COKE 3.98" / "2 @ 1.99"), otherwise the
           // next priced row ("2 @ 1.99" / "COKE 3.98").
-          if (!attachToLast(qty) && !_createFromPending(receipt, pendingNames, qty)) {
+          if (attachToLast(qty)) continue;
+          if (_fromPending(pendingNames, qty) case final made?) {
+            add(made.$1, made.$2);
+          } else {
             pendingQty = qty;
           }
+        } else if (rowHasName && isDepartmentHeading(desc)) {
+          section = desc;
+          pendingNames.clear();
         } else if (rowHasName) {
           pendingNames.add(desc);
         }
         continue;
       }
 
-      String? name = rowHasName ? desc : pendingNames.map(_cleanUnpricedName).lastOrNull;
+      String? name = rowHasName ? desc : pendingNames.lastOrNull;
+      String? code;
       // A produce line printed as just its PLU code and price: "4065  4.14 F".
-      if (name == null && RegExp(r'^\d{4,5}$').hasMatch(desc)) name = 'Item $desc';
+      if (name == null && RegExp(r'^\d{4,5}$').hasMatch(desc)) {
+        name = 'Item $desc';
+        code = desc;
+      }
       if (name == null) {
         // A priced row with no name: a quantity line under the previous item,
         // e.g. "ORANGES" / "3 @ 0.79  2.37" is handled by pendingNames; this is
@@ -251,10 +277,13 @@ class ReceiptParser {
         continue;
       }
 
-      final line = ParsedLine(rawText: _cleanName(name), lineTotalCents: amount);
+      final line = ParsedLine(
+          rawText: rowHasName ? _cleanName(name) : _cleanUnpricedName(name),
+          lineTotalCents: amount)
+        ..code = code;
       final appliedQty = qty ?? pendingQty;
       if (appliedQty != null && appliedQty.fits(amount)) _applyQty(line, appliedQty);
-      receipt.items.add(line);
+      add(line, name);
       pendingNames.clear();
       pendingQty = null;
     }
@@ -265,20 +294,26 @@ class ReceiptParser {
 
   /// Makes an item from name rows whose price was not read, pricing it from
   /// its quantity line. Only for names that start with a product code (so a
-  /// section heading is never turned into an item) or for weighed items.
-  bool _createFromPending(ParsedReceipt receipt, List<String> pending, _Qty qty) {
+  /// stray heading is never turned into an item) or for weighed items.
+  /// Returns the line and its first name row as printed.
+  (ParsedLine, String)? _fromPending(List<String> pending, _Qty qty) {
     final codeAt = pending.lastIndexWhere((n) => _codePrefix.hasMatch(n));
     final from = codeAt >= 0 ? codeAt : (qty.unit != 'each' ? pending.length - 1 : -1);
-    if (from < 0 || pending.isEmpty) return false;
+    if (from < 0 || pending.isEmpty) return null;
     final line = ParsedLine(
       rawText: pending.sublist(from).map(_cleanUnpricedName).join(' '),
       lineTotalCents: qty.expectedCents,
     );
     _applyQty(line, qty);
-    receipt.items.add(line);
+    final printed = pending[from];
     pending.clear();
-    return true;
+    return (line, printed);
   }
+
+  /// A barcode or PLU at the start of a name as printed, if it is all digits
+  /// (a misread code such as "20938700901K6" is not worth keeping).
+  static String? _codeOf(String printed) =>
+      RegExp(r'^(\d{4,14})\s').firstMatch(printed.trim())?.group(1);
 
   _Qty? _readLooseQty(String row) {
     final w = _looseWeight.firstMatch(row);

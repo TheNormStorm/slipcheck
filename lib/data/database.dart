@@ -51,6 +51,10 @@ class Products extends Table {
   RealColumn get sizeValue => real().nullable()();
   TextColumn get sizeUnit => text().nullable()();
   IntColumn get packCount => integer().nullable()();
+
+  /// `Category.name`; set from the receipt's department heading or keyword
+  /// rules when the product is created, and changeable by the user.
+  TextColumn get category => text().nullable()();
 }
 
 /// Remembered "this receipt text means that product", learned on save.
@@ -79,6 +83,12 @@ class LineItems extends Table {
   IntColumn get unitPriceCents => integer().nullable()();
   IntColumn get lineTotalCents => integer()();
   IntColumn get discountCents => integer().withDefault(const Constant(0))();
+
+  /// Barcode (UPC/EAN) or produce PLU printed on the line, when readable.
+  TextColumn get code => text().nullable()();
+
+  /// Department heading the line was printed under ("PRODUCE DEPT").
+  TextColumn get section => text().nullable()();
 }
 
 @DriftDatabase(
@@ -88,13 +98,18 @@ class AppDatabase extends _$AppDatabase {
       : super(executor ?? driftDatabase(name: 'slipcheck'));
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
         onCreate: (m) => m.createAll(),
         onUpgrade: (m, from, to) async {
           if (from < 2) await m.createTable(receiptImages);
+          if (from < 3) {
+            await m.addColumn(products, products.category);
+            await m.addColumn(lineItems, lineItems.code);
+            await m.addColumn(lineItems, lineItems.section);
+          }
         },
         beforeOpen: (details) async {
           await customStatement('PRAGMA foreign_keys = ON');
