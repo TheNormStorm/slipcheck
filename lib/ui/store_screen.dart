@@ -77,7 +77,7 @@ class _StoreScreenState extends State<StoreScreen> {
                   CheckboxListTile(
                     value: picked.contains(r),
                     title: Text(DateFormat.yMMMEd().format(r.purchasedAt)),
-                    subtitle: Text('${r.itemCount} items'),
+                    subtitle: Text('${r.itemCount} item${r.itemCount == 1 ? '' : 's'}'),
                     secondary: Text('\$${formatCents(r.spentCents)}'),
                     onChanged: (v) => setSheet(() {
                       if (v == true && picked.length < 2) picked.add(r);
@@ -218,7 +218,7 @@ class _StoreScreenState extends State<StoreScreen> {
                 ListTile(
                   contentPadding: EdgeInsets.zero,
                   title: Text(DateFormat.yMMMEd().format(r.purchasedAt)),
-                  subtitle: Text('${r.itemCount} items'),
+                  subtitle: Text('${r.itemCount} item${r.itemCount == 1 ? '' : 's'}'),
                   trailing: Text('\$${formatCents(r.spentCents)}'),
                   onTap: () async {
                     await Navigator.push(context, MaterialPageRoute(

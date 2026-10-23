@@ -174,6 +174,33 @@ class PricePoint {
   int get unitPriceCents => quantity == 0 ? netCents : (netCents / quantity).round();
 }
 
+/// Whether two normalised store names differ only by OCR slips: the same
+/// words, where a word of four or more letters may have one character
+/// wrong, added or missing ("markft basket"). Short words must match, so
+/// "store a" and "store b", or "cvs 12" and "cvs 15", stay apart.
+bool sameStoreName(String a, String b) {
+  final wa = a.split(' '), wb = b.split(' ');
+  if (wa.length != wb.length) return false;
+  for (var i = 0; i < wa.length; i++) {
+    if (wa[i] == wb[i]) continue;
+    if (wa[i].length < 4 || wb[i].length < 4 || _editDistance(wa[i], wb[i]) > 1) return false;
+  }
+  return true;
+}
+
+int _editDistance(String a, String b) {
+  var prev = List.generate(b.length + 1, (j) => j);
+  for (var i = 1; i <= a.length; i++) {
+    final cur = [i, ...List.filled(b.length, 0)];
+    for (var j = 1; j <= b.length; j++) {
+      final cost = a[i - 1] == b[j - 1] ? 0 : 1;
+      cur[j] = [prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + cost].reduce((x, y) => x < y ? x : y);
+    }
+    prev = cur;
+  }
+  return prev[b.length];
+}
+
 String normalizeStoreName(String name) =>
     name.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
 
@@ -190,16 +217,10 @@ class ReceiptRepository {
     for (final s in stores) {
       if (s.normalizedName == normalized) return s.id;
     }
-    Store? best;
-    var bestScore = 0.0;
     for (final s in stores) {
-      final score = similarity(s.normalizedName, normalized);
-      if (score > bestScore) {
-        best = s;
-        bestScore = score;
-      }
+      if (sameStoreName(s.normalizedName, normalized)) return s.id;
     }
-    return bestScore >= 0.8 ? best!.id : null;
+    return null;
   }
 
   Future<ProductMatcher> loadMatcher() async {

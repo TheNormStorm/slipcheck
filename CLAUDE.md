@@ -20,6 +20,12 @@ Do not add cloud OCR/LLM services without asking.
   `Android/data/com.slipcheck.slipcheck/files/ocr/` — that is how new fixtures
   are made from receipts that read badly.
 
+## Privacy rules
+- Never store the card section: run OCR rows through `withoutPaymentSection`
+  and OCR lines through `withoutPaymentLines` (lib/core/parsing/redaction.dart)
+  before persisting. Receipt files live only where `ReceiptFiles` says, so
+  delete and clear-all can remove every copy.
+
 ## Conventions
 - Money is integer cents (`int`) everywhere; never `double` for money.
 - Quantities may be fractional (weighed items), stored as `double`.

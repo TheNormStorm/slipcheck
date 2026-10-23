@@ -296,7 +296,7 @@ class _HomeScreenState extends State<HomeScreen> {
               final r = receipts[i];
               return ListTile(
                 title: Text(r.storeName ?? 'Unknown store'),
-                subtitle: Text('${DateFormat.yMMMd().format(r.purchasedAt)} · ${r.itemCount} items'),
+                subtitle: Text('${DateFormat.yMMMd().format(r.purchasedAt)} · ${r.itemCount} item${r.itemCount == 1 ? '' : 's'}'),
                 trailing: Text(formatCents(r.spentCents)),
                 onTap: () => _open(ReceiptDetailScreen(repo: widget.repo, receiptId: r.id)),
               );

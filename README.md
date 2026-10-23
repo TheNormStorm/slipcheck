@@ -48,4 +48,15 @@ remembered as an alias.
   within their store. Otherwise the item page suggests likely matches (same
   category, size and pack count, similar name) to link with one tap.
 
+## Your data
+
+- Everything stays on the phone. Card numbers, approval codes and other
+  card-section lines are never stored (cut from OCR text and files).
+- ⋮ menu: export every line as CSV, back up the database (you choose where
+  the file goes via the share sheet; photos are not included), restore
+  from a backup, or clear all receipts (optionally forgetting items and
+  stores too).
+- Saved receipts can be edited; items renamed; cross-store links undone
+  right after linking. A second scan of a saved receipt is flagged.
+
 Debug builds only: long-press the title to load sample receipts.

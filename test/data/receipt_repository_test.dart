@@ -287,4 +287,13 @@ void main() {
       expect((await db.select(db.productAliases).get()).length, aliasesBefore);
     });
   });
+
+  test('store names: OCR slips match, different branches do not', () {
+    expect(sameStoreName('market basket', 'markft basket'), isTrue);
+    expect(sameStoreName('market basket', 'market baskets'), isTrue);
+    expect(sameStoreName('restored store a', 'restored store b'), isFalse);
+    expect(sameStoreName('cvs 12', 'cvs 15'), isFalse);
+    expect(sameStoreName('market basket', 'market basket chelsea'), isFalse);
+    expect(sameStoreName('whole foods', 'whole goods'), isTrue); // one slip in a long word
+  });
 }
