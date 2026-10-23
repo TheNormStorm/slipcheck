@@ -94,11 +94,10 @@ class ScanSession {
           if (!join.found)
             'Could not find where photo ${join.page + 1} overlaps photo ${join.page}. '
                 'Check for missing or doubled lines there.',
+        // A missing total and the items-vs-total check are shown in the
+        // review screen's summary instead.
         for (final w in result.parsed.warnings)
-          if (w == 'No total found.')
-            'No TOTAL found. Add a photo of the bottom of the receipt.'
-          else
-            w,
+          if (w == 'No items found.') w,
       ];
 
   String summary() {

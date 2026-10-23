@@ -31,6 +31,8 @@ class DraftLine {
 
   /// An existing product the user confirmed; null creates or finds one by name.
   int? productId;
+
+  int get netCents => lineTotalCents - discountCents;
 }
 
 class ReceiptDraft {

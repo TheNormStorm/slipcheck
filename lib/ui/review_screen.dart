@@ -6,6 +6,7 @@ import 'package:intl/intl.dart' show DateFormat;
 import '../core/matching/product_matcher.dart';
 import '../core/money.dart';
 import '../data/receipt_repository.dart';
+import 'line_item_row.dart';
 import 'scan_flow.dart';
 
 /// Testing UI: shows the parsed receipt so every field can be corrected
@@ -131,10 +132,23 @@ class _ReviewScreenState extends State<ReviewScreen> {
                     ]),
                   ),
                 ),
-              OutlinedButton.icon(
-                onPressed: _reading ? null : _addPhotos,
-                icon: const Icon(Icons.add_a_photo),
-                label: const Text('Add photo'),
+              Align(
+                alignment: Alignment.topCenter,
+                child: SizedBox(
+                  width: 72,
+                  height: 92,
+                  child: OutlinedButton(
+                    onPressed: _reading ? null : _addPhotos,
+                    style: OutlinedButton.styleFrom(
+                      padding: EdgeInsets.zero,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                    child: const Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [Icon(Icons.add_a_photo), SizedBox(height: 4), Text('Add')],
+                    ),
+                  ),
+                ),
               ),
             ],
           ),
@@ -163,7 +177,7 @@ class _ReviewScreenState extends State<ReviewScreen> {
   MatchResult? _match(DraftLine line) =>
       line.name.trim().isEmpty ? null : _matcher?.match(line.name, storeId: _storeId);
 
-  int get _itemsSum => draft.lines.fold(0, (s, l) => s + l.lineTotalCents - l.discountCents);
+  int get _itemsSum => draft.lines.fold(0, (s, l) => s + l.netCents);
 
   Future<void> _save() async {
     setState(() => _saving = true);
@@ -180,27 +194,165 @@ class _ReviewScreenState extends State<ReviewScreen> {
     if (mounted) Navigator.of(context).pop(true);
   }
 
-  @override
-  Widget build(BuildContext context) {
+  Future<void> _editLine(DraftLine line) async {
+    final result = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (_) => LineEditSheet(line: line),
+    );
+    if (result == 'delete') {
+      setState(() => draft.lines.remove(line));
+    } else if (result == 'save') {
+      setState(() => _acceptedFuzzy.remove(line));
+    } else if (line.name.trim().isEmpty && line.lineTotalCents == 0) {
+      // A new line that was dismissed without being filled in.
+      setState(() => draft.lines.remove(line));
+    }
+  }
+
+  Future<void> _addLine() async {
+    final line = DraftLine(name: '', lineTotalCents: 0);
+    setState(() => draft.lines.add(line));
+    await _editLine(line);
+  }
+
+  /// What the items add up to compared with what the receipt says.
+  Widget _summary() {
+    final theme = Theme.of(context);
     final expected = draft.subtotalCents ??
         (draft.totalCents == null ? null : draft.totalCents! - (draft.taxCents ?? 0));
-    final mismatch = expected != null && expected != _itemsSum;
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Check receipt'),
-        actions: [
-          TextButton(
-            onPressed: _saving || _reading || _matcher == null ? null : _save,
-            child: const Text('Save'),
-          ),
-        ],
+    final count = draft.lines.length;
+    final (String text, Color color, IconData icon) = switch (expected) {
+      null => (
+          widget.session == null
+              ? 'Type the receipt total below to check the items.'
+              : 'No TOTAL found, so the items could not be checked. Add a photo of '
+                  'the bottom of the receipt, or type the total below.',
+          theme.colorScheme.onSurfaceVariant,
+          Icons.help_outline,
+        ),
+      final e when e == _itemsSum => (
+          'Matches the receipt ${draft.subtotalCents != null ? 'subtotal' : 'total'}',
+          Colors.green.shade700,
+          Icons.check_circle,
+        ),
+      final e => (
+          'Receipt says ${formatCents(e)}: off by ${formatCents((_itemsSum - e).abs())}. '
+              'Check for a missing, doubled or misread line.',
+          theme.colorScheme.error,
+          Icons.error,
+        ),
+    };
+    return Card(
+      margin: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              Expanded(
+                child: Text('$count item${count == 1 ? '' : 's'}',
+                    style: theme.textTheme.titleMedium),
+              ),
+              Text(formatCents(_itemsSum),
+                  style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+            ]),
+            const SizedBox(height: 4),
+            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Icon(icon, size: 18, color: color),
+              const SizedBox(width: 6),
+              Expanded(child: Text(text, style: TextStyle(color: color))),
+            ]),
+          ],
+        ),
       ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Scaffold(
+      appBar: AppBar(title: const Text('Check receipt')),
       body: ListView(
         key: ValueKey(_generation),
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.only(bottom: 24),
         children: [
-          if (widget.session != null) _photos(widget.session!),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+            child: Row(children: [
+              Expanded(
+                child: TextFormField(
+                  initialValue: draft.storeName,
+                  style: theme.textTheme.titleLarge,
+                  decoration: const InputDecoration(labelText: 'Store'),
+                  onChanged: (v) => draft.storeName = v,
+                  onFieldSubmitted: (_) => _loadMatching(),
+                ),
+              ),
+              const SizedBox(width: 12),
+              ActionChip(
+                avatar: const Icon(Icons.calendar_today, size: 18),
+                label: Text(DateFormat.yMMMd().format(draft.purchasedAt)),
+                onPressed: () async {
+                  final d = await showDatePicker(
+                    context: context,
+                    initialDate: draft.purchasedAt,
+                    firstDate: DateTime(2000),
+                    lastDate: DateTime.now().add(const Duration(days: 1)),
+                  );
+                  if (d != null) setState(() => draft.purchasedAt = d);
+                },
+              ),
+            ]),
+          ),
+          if (widget.session != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+              child: _photos(widget.session!),
+            ),
+          _summary(),
+          for (final (i, line) in draft.lines.indexed) ...[
+            if (i > 0) const Divider(height: 1, indent: 16, endIndent: 16),
+            LineItemRow(
+              key: ObjectKey(line),
+              line: line,
+              match: _match(line),
+              linked: _acceptedFuzzy.contains(line),
+              onTap: () => _editLine(line),
+              onLink: (v) => setState(
+                  () => v ? _acceptedFuzzy.add(line) : _acceptedFuzzy.remove(line)),
+            ),
+          ],
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: _addLine,
+                icon: const Icon(Icons.add),
+                label: const Text('Add item'),
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+            child: Text('As printed on the receipt', style: theme.textTheme.titleSmall),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(children: [
+              Expanded(child: _moneyField('Subtotal', draft.subtotalCents,
+                  (v) => draft.subtotalCents = v)),
+              const SizedBox(width: 8),
+              Expanded(child: _moneyField('Tax', draft.taxCents, (v) => draft.taxCents = v)),
+              const SizedBox(width: 8),
+              Expanded(child: _moneyField('Total', draft.totalCents,
+                  (v) => draft.totalCents = v)),
+            ]),
+          ),
           if (draft.ocrText != null)
             ExpansionTile(
               title: const Text('OCR text'),
@@ -209,125 +361,26 @@ class _ReviewScreenState extends State<ReviewScreen> {
                     style: const TextStyle(fontFamily: 'monospace', fontSize: 12)),
               ],
             ),
-          TextFormField(
-            initialValue: draft.storeName,
-            decoration: const InputDecoration(labelText: 'Store'),
-            onChanged: (v) => draft.storeName = v,
-            onFieldSubmitted: (_) => _loadMatching(),
-          ),
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            title: Text('Date: ${DateFormat.yMMMd().format(draft.purchasedAt)}'),
-            trailing: const Icon(Icons.calendar_today),
-            onTap: () async {
-              final d = await showDatePicker(
-                context: context,
-                initialDate: draft.purchasedAt,
-                firstDate: DateTime(2000),
-                lastDate: DateTime.now().add(const Duration(days: 1)),
-              );
-              if (d != null) setState(() => draft.purchasedAt = d);
-            },
-          ),
-          const Divider(),
-          for (final line in draft.lines) _lineEditor(line),
-          TextButton.icon(
-            onPressed: () => setState(
-                () => draft.lines.add(DraftLine(name: '', lineTotalCents: 0))),
-            icon: const Icon(Icons.add),
-            label: const Text('Add line'),
-          ),
-          const Divider(),
-          Row(children: [
-            Expanded(child: _moneyField('Subtotal', draft.subtotalCents,
-                (v) => draft.subtotalCents = v)),
-            const SizedBox(width: 8),
-            Expanded(child: _moneyField('Tax', draft.taxCents, (v) => draft.taxCents = v)),
-            const SizedBox(width: 8),
-            Expanded(child: _moneyField('Total', draft.totalCents,
-                (v) => draft.totalCents = v)),
-          ]),
-          const SizedBox(height: 8),
-          Text(
-            'Items add up to ${formatCents(_itemsSum)}'
-            '${mismatch ? ' — receipt says ${formatCents(expected)}' : ''}',
-            style: TextStyle(
-                color: mismatch ? Theme.of(context).colorScheme.error : null),
-          ),
         ],
       ),
-    );
-  }
-
-  Widget _lineEditor(DraftLine line) {
-    final m = _match(line);
-    final String status;
-    switch (m?.kind) {
-      case MatchKind.storeAlias || MatchKind.alias || MatchKind.exact:
-        status = '→ ${m!.product!.displayName}';
-      case MatchKind.fuzzy:
-        status = 'Similar: ${m!.product!.displayName} '
-            '(${(m.score * 100).round()}%)';
-      case MatchKind.none:
-        status = 'New item';
-      case null:
-        status = '';
-    }
-    return Card(
-      key: ObjectKey(line),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(8, 0, 0, 8),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(children: [
-              Expanded(
-                child: TextFormField(
-                  initialValue: line.name,
-                  decoration: const InputDecoration(labelText: 'Item'),
-                  onChanged: (v) => setState(() => line.name = v),
-                ),
+      bottomNavigationBar: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+          child: Row(children: [
+            Expanded(
+              child: Text(
+                draft.totalCents == null
+                    ? 'Items ${formatCents(_itemsSum)}'
+                    : 'Total ${formatCents(draft.totalCents!)}',
+                style: theme.textTheme.titleMedium,
               ),
-              IconButton(
-                icon: const Icon(Icons.delete_outline),
-                onPressed: () => setState(() => draft.lines.remove(line)),
-              ),
-            ]),
-            Row(children: [
-              SizedBox(
-                width: 70,
-                child: TextFormField(
-                  initialValue: _qtyText(line.quantity),
-                  decoration: InputDecoration(labelText: line.unit == 'each' ? 'Qty' : line.unit),
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  onChanged: (v) {
-                    final q = double.tryParse(v.replaceAll(',', '.'));
-                    if (q != null && q > 0) line.quantity = q;
-                  },
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(child: _moneyField('Line total', line.lineTotalCents,
-                  (v) => line.lineTotalCents = v ?? 0)),
-              const SizedBox(width: 8),
-              Expanded(child: _moneyField('Discount', line.discountCents,
-                  (v) => line.discountCents = (v ?? 0).abs())),
-              const SizedBox(width: 8),
-            ]),
-            if (status.isNotEmpty)
-              Row(children: [
-                Expanded(child: Text(status, style: Theme.of(context).textTheme.bodySmall)),
-                if (m?.kind == MatchKind.fuzzy) ...[
-                  const Text('Same item?'),
-                  Checkbox(
-                    value: _acceptedFuzzy.contains(line),
-                    onChanged: (v) => setState(() => v == true
-                        ? _acceptedFuzzy.add(line)
-                        : _acceptedFuzzy.remove(line)),
-                  ),
-                ],
-              ]),
-          ],
+            ),
+            FilledButton.icon(
+              onPressed: _saving || _reading || _matcher == null ? null : _save,
+              icon: const Icon(Icons.check),
+              label: const Text('Save receipt'),
+            ),
+          ]),
         ),
       ),
     );
@@ -341,7 +394,4 @@ class _ReviewScreenState extends State<ReviewScreen> {
       onChanged: (v) => setState(() => onChanged(v.trim().isEmpty ? null : parseTypedCents(v))),
     );
   }
-
-  static String _qtyText(double q) =>
-      q == q.roundToDouble() ? q.toInt().toString() : q.toString();
 }
