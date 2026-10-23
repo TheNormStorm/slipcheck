@@ -18,7 +18,7 @@ class Receipts extends Table {
   IntColumn get subtotalCents => integer().nullable()();
   IntColumn get taxCents => integer().nullable()();
   IntColumn get totalCents => integer().nullable()();
-  TextColumn get currency => text().withDefault(const Constant('CAD'))();
+  TextColumn get currency => text().withDefault(const Constant('USD'))();
 
   /// Local path of the receipt photo, kept so it can be re-read later.
   TextColumn get imagePath => text().nullable()();
@@ -64,7 +64,7 @@ class LineItems extends Table {
   IntColumn get productId => integer().nullable().references(Products, #id)();
   RealColumn get quantity => real().withDefault(const Constant(1))();
 
-  /// 'each' or 'kg'.
+  /// 'each', 'kg' or 'lb'.
   TextColumn get unit => text().withDefault(const Constant('each'))();
   IntColumn get unitPriceCents => integer().nullable()();
   IntColumn get lineTotalCents => integer()();

@@ -30,12 +30,12 @@ class PriceHistoryScreen extends StatelessWidget {
           final stores = {for (final p in points) p.storeName ?? '?'}.toList();
           Color colorOf(PricePoint p) =>
               _palette[stores.indexOf(p.storeName ?? '?') % _palette.length];
-          final perKg = points.any((p) => p.unit == 'kg');
+          final weighed = points.where((p) => p.unit != 'each').firstOrNull;
 
           return ListView(
             padding: const EdgeInsets.all(12),
             children: [
-              Text(perKg ? 'Price per kg' : 'Price each',
+              Text(weighed == null ? 'Price each' : 'Price per ${weighed.unit}',
                   style: Theme.of(context).textTheme.titleSmall),
               SizedBox(
                 height: 200,

@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
@@ -31,14 +32,11 @@ class ReceiptReader {
     final lines = [
       for (final block in recognized.blocks)
         for (final line in block.lines)
-          OcrLine(
-            line.text,
-            left: line.boundingBox.left,
-            top: line.boundingBox.top,
-            right: line.boundingBox.right,
-            bottom: line.boundingBox.bottom,
-          ),
+          OcrLine.fromCorners(line.text, [
+            for (final pt in line.cornerPoints) (pt.x.toDouble(), pt.y.toDouble()),
+          ]),
     ];
+    await _saveOcrDump(imagePath, lines);
     final rows = groupIntoRows(lines);
     return ReadResult(imagePath, rows, parser.parse(rows));
   }
@@ -51,6 +49,23 @@ class ReceiptReader {
         '${DateTime.now().millisecondsSinceEpoch}${p.extension(source)}');
     await File(source).copy(target);
     return target;
+  }
+
+  /// Writes the raw OCR lines next to the photo as JSON. They are what a
+  /// parser test fixture is made from when a receipt reads badly; on Android
+  /// a copy also goes to the app's external files folder, reachable over USB
+  /// (Android/data/com.slipcheck.slipcheck/files/ocr).
+  Future<void> _saveOcrDump(String imagePath, List<OcrLine> lines) async {
+    final json = jsonEncode([for (final l in lines) l.toJson()]);
+    await File('${p.withoutExtension(imagePath)}.ocr.json').writeAsString(json);
+    if (Platform.isAndroid) {
+      final external = await getExternalStorageDirectory();
+      if (external == null) return;
+      final dir = Directory(p.join(external.path, 'ocr'));
+      await dir.create(recursive: true);
+      await File(p.join(dir.path, '${p.basenameWithoutExtension(imagePath)}.json'))
+          .writeAsString(json);
+    }
   }
 
   Future<void> close() => _recognizer.close();

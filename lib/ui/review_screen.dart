@@ -191,7 +191,7 @@ class _ReviewScreenState extends State<ReviewScreen> {
                 width: 70,
                 child: TextFormField(
                   initialValue: _qtyText(line.quantity),
-                  decoration: InputDecoration(labelText: line.unit == 'kg' ? 'kg' : 'Qty'),
+                  decoration: InputDecoration(labelText: line.unit == 'each' ? 'Qty' : line.unit),
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
                   onChanged: (v) {
                     final q = double.tryParse(v.replaceAll(',', '.'));

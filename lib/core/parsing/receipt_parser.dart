@@ -15,7 +15,7 @@ class ParsedLine {
   String rawText;
   double quantity;
 
-  /// 'each' or 'kg'.
+  /// 'each', 'kg' or 'lb'.
   String unit;
   int? unitPriceCents;
   int lineTotalCents;
@@ -55,7 +55,7 @@ class ParsedReceipt {
 /// rule based and deliberately forgiving: anything it cannot classify is
 /// ignored, and the review screen is where the user fixes the rest.
 class ReceiptParser {
-  const ReceiptParser({this.dayFirst = true});
+  const ReceiptParser({this.dayFirst = false});
 
   /// How to read ambiguous dates such as 03/04/2026.
   final bool dayFirst;
@@ -63,13 +63,20 @@ class ReceiptParser {
   // Amount at the end of a row, optionally followed by a tax code ("H", "*", "E").
   static final _trailingAmount = RegExp(
       r'^(.*?)\s*(-?\$?\d{1,6}[.,]\d{2}-?)\s*(?:[A-Z*]{1,2})?\s*$');
-  // "2 @ 1.99", "2 x $1.99", "3 for 5.00" is not handled (multi-buy) on purpose.
+  // "6 @ 2/6.00": six bought at a 2-for-6.00 price.
+  static final _multiBuyQty = RegExp(
+      r'(?:^|\s)(\d{1,3})\s*@\s*(\d{1,2})\s*/\s*\$?(\d{1,5}[.,]\d{2})');
+  // "2 @ 1.99", "2 x $1.99"
   static final _countQty = RegExp(
       r'(?:^|\s)(\d{1,3})\s*(?:@|x|X|×)\s*\$?(\d{1,5}[.,]\d{2})(?:\s*(?:ea|each))?',
       caseSensitive: false);
   // "0.512 kg @ $3.99/kg", "1.234kg @ 1.52 /kg"
   static final _weightQty = RegExp(
       r'(\d{1,3}[.,]\d{1,3})\s*kg\s*(?:@|x|×)\s*\$?(\d{1,5}[.,]\d{2})\s*/\s*kg',
+      caseSensitive: false);
+  // "2.170 lb @ $0.69/lb"
+  static final _poundQty = RegExp(
+      r'(\d{1,3}[.,]\d{1,3})\s*lbs?\s*(?:@|x|×)\s*\$?(\d{1,5}[.,]\d{2})\s*/\s*lb',
       caseSensitive: false);
   static final _letters = RegExp(r'[A-Za-z]{2,}');
 
@@ -98,6 +105,8 @@ class ReceiptParser {
       for (final r in rows)
         if (r.trim().isNotEmpty)
           r
+              // A count printed in its own column before the name: "1  BOTTLE DEPOSIT".
+              .replaceFirst(RegExp(r'^\s*\d{1,3}\s{2,}(?=[A-Za-z])'), '')
               .replaceAll(RegExp(r'\s+'), ' ')
               // OCR sometimes splits an amount: "0. 79", "1 .99".
               .replaceAllMapped(RegExp(r'(\d) ?([.,]) ?(\d{2})\b'),
@@ -155,13 +164,18 @@ class ReceiptParser {
         if (qty != null) {
           // Quantity on its own row. It describes the item above when that
           // item's total matches ("COKE 3.98" / "2 @ 1.99"), otherwise the
-          // next priced row ("2 @ 1.99" / "COKE 3.98").
+          // next priced row ("2 @ 1.99" / "COKE 3.98"). A name-only row in
+          // between was the item's name wrapping onto a second line
+          // ("BELL & EVANS HALF  7.63" / "CHICKEN" / "1 @ 7.63").
           final last = receipt.items.isEmpty ? null : receipt.items.last;
-          if (pendingName == null &&
-              last != null &&
+          if (last != null &&
               last.unitPriceCents == null &&
               (qty.amount * qty.unitPriceCents).round() == last.lineTotalCents) {
             _applyQty(last, qty);
+            if (pendingName != null) {
+              last.rawText = '${last.rawText} ${_cleanName(pendingName)}';
+              pendingName = null;
+            }
           } else {
             pendingQty = qty;
           }
@@ -184,7 +198,7 @@ class ReceiptParser {
         continue;
       }
 
-      final line = ParsedLine(rawText: name, lineTotalCents: amount);
+      final line = ParsedLine(rawText: _cleanName(name), lineTotalCents: amount);
       final appliedQty = qty ?? pendingQty;
       if (appliedQty != null) _applyQty(line, appliedQty);
       receipt.items.add(line);
@@ -205,6 +219,16 @@ class ReceiptParser {
     if (w != null) {
       return _Qty(_num(w.group(1)!), 'kg', parseCents(w.group(2)!)!);
     }
+    final lb = _poundQty.firstMatch(row);
+    if (lb != null) {
+      return _Qty(_num(lb.group(1)!), 'lb', parseCents(lb.group(2)!)!);
+    }
+    final mb = _multiBuyQty.firstMatch(row);
+    if (mb != null) {
+      final dealPrice = parseCents(mb.group(3)!)!;
+      return _Qty(double.parse(mb.group(1)!), 'each',
+          (dealPrice / int.parse(mb.group(2)!)).round());
+    }
     final c = _countQty.firstMatch(row);
     if (c != null) {
       return _Qty(double.parse(c.group(1)!), 'each', parseCents(c.group(2)!)!);
@@ -214,8 +238,17 @@ class ReceiptParser {
 
   String _stripQty(String desc) => desc
       .replaceAll(_weightQty, ' ')
+      .replaceAll(_poundQty, ' ')
+      .replaceAll(_multiBuyQty, ' ')
       .replaceAll(_countQty, ' ')
       .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
+
+  /// Drops leading UPC/PLU codes and undoes OCR reading O as 0 inside words.
+  static String _cleanName(String name) => name
+      .replaceFirst(RegExp(r'^(\d{4,}\s+)+'), '')
+      .replaceAllMapped(RegExp(r'\b0(?=[A-Za-z]{2})|(?<=[A-Za-z])0(?=[A-Za-z])'),
+          (m) => 'O')
       .trim();
 
   void _applyQty(ParsedLine line, _Qty qty) {

@@ -344,7 +344,7 @@ class $ReceiptsTable extends Receipts with TableInfo<$ReceiptsTable, Receipt> {
     false,
     type: DriftSqlType.string,
     requiredDuringInsert: false,
-    defaultValue: const Constant('CAD'),
+    defaultValue: const Constant('USD'),
   );
   static const VerificationMeta _imagePathMeta = const VerificationMeta(
     'imagePath',
@@ -1948,7 +1948,7 @@ class LineItem extends DataClass implements Insertable<LineItem> {
   final int? productId;
   final double quantity;
 
-  /// 'each' or 'kg'.
+  /// 'each', 'kg' or 'lb'.
   final String unit;
   final int? unitPriceCents;
   final int lineTotalCents;

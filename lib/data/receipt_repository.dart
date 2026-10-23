@@ -44,6 +44,7 @@ class ReceiptDraft {
     this.imagePath,
     this.ocrText,
     this.source = 'photo',
+    this.currency = 'USD',
   });
 
   String storeName;
@@ -55,6 +56,7 @@ class ReceiptDraft {
   final String? imagePath;
   final String? ocrText;
   final String source;
+  final String currency;
 }
 
 class ReceiptSummary {
@@ -90,7 +92,7 @@ class PricePoint {
   final String unit;
   final int netCents;
 
-  /// Price per one unit (each, or per kg) after discounts.
+  /// Price per one unit (each, per kg or per lb) after discounts.
   int get unitPriceCents => quantity == 0 ? netCents : (netCents / quantity).round();
 }
 
@@ -138,6 +140,7 @@ class ReceiptRepository {
             imagePath: Value(draft.imagePath),
             ocrText: Value(draft.ocrText),
             source: draft.source,
+            currency: Value(draft.currency),
           ));
       for (final (i, line) in draft.lines.indexed) {
         final productId = line.productId ?? await _findOrCreateProduct(line.name);

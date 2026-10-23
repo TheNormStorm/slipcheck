@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -62,6 +63,82 @@ void main() {
     });
   });
 
+  group('real receipt: Market Basket (ML Kit output, curled paper)', () {
+    late ParsedReceipt r;
+    setUpAll(() {
+      final json = jsonDecode(
+          File('test/fixtures/market_basket_mlkit.json').readAsStringSync()) as List;
+      final rows = groupIntoRows([for (final l in json) OcrLine.fromJson(l)]);
+      r = const ReceiptParser().parse(rows);
+    });
+
+    test('store and US date', () {
+      expect(r.storeName, 'MARKET BASKET');
+      expect(r.date, DateTime(2026, 10, 22));
+    });
+
+    test('every line item, names without UPC codes, wrapped names joined', () {
+      expect(r.items.map((i) => (i.rawText, formatCents(i.lineTotalCents))).toList(), [
+        ('BOTTLE DEPOSIT 1PK', '0.10'),
+        ('BOTTLE DEPOSIT 12PK', '0.60'),
+        ('CEDARS PITA', '2.99'),
+        ('LEMON SQUEEZE', '1.50'),
+        ('MB LG BROWN CAGE FREE 18PK', '8.97'),
+        ('GII HAND CUT FRIES', '4.99'),
+        ('BELL & EVANS HALF CHICKEN', '7.63'),
+        ('BEPRTYWNGABF', '4.22'),
+        ('BELL & EVANS DRUMSTICK ABF', '4.63'),
+        ('BELL & EVANS HALF CHICKEN', '8.33'),
+        ('BELL & EVANS DRUMSTICK ABF', '4.04'),
+        ('BADIA CHIMICHURI SCE', '3.99'),
+        ('OLIVARI OIL', '8.99'),
+        ('BH SOLID WHITE N/S', '18.00'),
+        ('POLAND SPRINGS 24PK', '9.00'),
+        ('FOCO JASMINE RICE', '8.99'),
+        ('LIBBYS', '5.29'),
+        ('GOYA SWEET PLANTAIN', '2.99'),
+        ('POPCORNERS WT-CHEDDR', '3.99'),
+        ('OSPRAY CRAN 100%', '6.29'),
+        ('GOYA DRY SM RED BEAN', '1.89'),
+        ('PEPSI DIET', '2.39'),
+        ('GOYA WHITE BEANS', '1.25'),
+        ('GOYA LITE COCNUTMILK', '3.00'),
+        ('PANERA HONEY WHEAT', '4.99'),
+        ('WELCHS SPARKLING RED', '3.99'),
+        ('EXCEL FAMILY CRACKER', '6.87'),
+        ('FR DIET CAFFEINE', '8.49'),
+        ('CREST', '4.99'),
+        ('So CM VANILLA', '5.49'),
+        ('sc VAN NSA', '4.49'),
+        ('ORGANIC RASPBERRIES', '4.99'),
+        ('ORGANIC BANANAS', '1.50'),
+      ]);
+    });
+
+    test('quantities, including multi-buy deals', () {
+      ParsedLine item(String name) => r.items.firstWhere((i) => i.rawText == name);
+      expect((item('BOTTLE DEPOSIT 1PK').quantity, item('BOTTLE DEPOSIT 1PK').unitPriceCents), (2, 5));
+      expect((item('MB LG BROWN CAGE FREE 18PK').quantity, item('MB LG BROWN CAGE FREE 18PK').unitPriceCents), (3, 299));
+      expect((item('BH SOLID WHITE N/S').quantity, item('BH SOLID WHITE N/S').unitPriceCents), (6, 300));
+      expect((item('POLAND SPRINGS 24PK').quantity, item('POLAND SPRINGS 24PK').unitPriceCents), (2, 450));
+      expect((item('EXCEL FAMILY CRACKER').quantity, item('EXCEL FAMILY CRACKER').unitPriceCents), (3, 229));
+    });
+
+    test('photo ends before the total, so that is flagged', () {
+      expect(r.totalCents, isNull);
+      expect(r.warnings, contains('No total found.'));
+    });
+  });
+
+  group('quantity formats', () {
+    test('per-pound weight', () {
+      final r = const ReceiptParser().parse(['BANANAS', '2.170 lb @ \$0.69/lb  1.50 F', 'TOTAL 1.50']);
+      expect(r.items.single.unit, 'lb');
+      expect(r.items.single.quantity, 2.17);
+      expect(r.items.single.unitPriceCents, 69);
+    });
+  });
+
   group('ReceiptParser', () {
     const parser = ReceiptParser();
 
@@ -104,7 +181,7 @@ void main() {
     });
 
     test('decimal commas and day-first dates', () {
-      final r = parser.parse(fixture('dayfirst_comma'));
+      final r = const ReceiptParser(dayFirst: true).parse(fixture('dayfirst_comma'));
       expect(r.storeName, 'Bäckerei Corner Shop');
       expect(r.date, DateTime(2026, 4, 3));
       expect(r.items.map((i) => (i.rawText, i.lineTotalCents)).toList(), [
