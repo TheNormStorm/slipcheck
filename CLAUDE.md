@@ -4,13 +4,18 @@ Flutter app, Android first. Fully on-device: no network calls, no API keys, no a
 Do not add cloud OCR/LLM services without asking.
 
 ## Layout
-- `lib/core/` — pure Dart, no Flutter imports. Parsing (`parsing/`) and product
-  matching (`matching/`). All logic that can be unit-tested lives here.
+- `lib/core/` — pure Dart, no Flutter imports. Parsing (`parsing/`: row grouping,
+  multi-photo stitching, page quality, receipt parser) and product matching
+  (`matching/`). All logic that can be unit-tested lives here.
 - `lib/data/` — drift SQLite database (`database.dart`, generated `database.g.dart`)
   and `ReceiptRepository`.
 - `lib/ocr/` — ML Kit adapter that turns an image into `OcrLine`s (text + bounding box).
-- `lib/ui/` — screens. Kept minimal on purpose (testing UI).
-- `test/fixtures/` — OCR output samples used by parser tests.
+- `lib/ui/` — screens. Kept minimal on purpose (testing UI). `scan_flow.dart`
+  wraps the document scanner and the photos behind a receipt under review.
+- `test/fixtures/` — OCR output samples used by parser tests. `*.json` files are
+  real ML Kit output (redact names). The app writes the same JSON per photo to
+  `Android/data/com.slipcheck.slipcheck/files/ocr/` — that is how new fixtures
+  are made from receipts that read badly.
 
 ## Conventions
 - Money is integer cents (`int`) everywhere; never `double` for money.
