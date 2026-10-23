@@ -39,5 +39,13 @@ remembered as an alias.
   same store), geometric mean per month, chained.
 - **Biggest price changes**: latest price against your usual at that store.
 - **Store comparison**: median price per store for items bought at several.
+- **By store**: receipts grouped per store; a store page with its spending,
+  price changes and any two of its receipts to compare.
+- **Categories**: from the department headings receipts print, else keyword
+  rules; changeable per item. Items screen and a spending chart by category.
+- **Matching across stores**: barcodes (UPC/EAN) and produce PLUs printed on
+  receipts match exactly at any store; in-store codes (2xxxxxxxxxxxx) only
+  within their store. Otherwise the item page suggests likely matches (same
+  category, size and pack count, similar name) to link with one tap.
 
 Debug builds only: long-press the title to load sample receipts.

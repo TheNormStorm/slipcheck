@@ -295,6 +295,13 @@ class ReceiptRepository {
             .write(ProductAliasesCompanion(productId: Value(keepId)));
         final merged = await (db.select(db.products)..where((p) => p.id.equals(mergeId)))
             .getSingle();
+        final kept = await (db.select(db.products)..where((p) => p.id.equals(keepId)))
+            .getSingle();
+        if ((kept.category == null || kept.category == Category.other.name) &&
+            merged.category != null) {
+          await (db.update(db.products)..where((p) => p.id.equals(keepId)))
+              .write(ProductsCompanion(category: Value(merged.category)));
+        }
         // Its own name keeps matching the kept product on future receipts.
         await db.into(db.productAliases).insert(ProductAliasesCompanion.insert(
               aliasKey: merged.canonicalKey,

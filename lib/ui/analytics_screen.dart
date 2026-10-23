@@ -6,9 +6,11 @@ import 'package:intl/intl.dart' show DateFormat;
 
 import '../core/analytics/price_insights.dart';
 import '../core/analytics/purchase.dart';
+import '../core/categories.dart';
 import '../core/money.dart';
 import '../data/receipt_repository.dart';
 import 'chart_palette.dart';
+import 'charts.dart';
 
 /// Spending by month and store, how the prices of what you buy have moved,
 /// which items changed price most, and where the same item is cheaper.
@@ -21,16 +23,22 @@ class AnalyticsScreen extends StatefulWidget {
 }
 
 class _Data {
-  _Data(this.receipts, this.purchases);
+  _Data(this.receipts, this.purchases, this.categories);
   final List<ReceiptSummary> receipts;
   final List<Purchase> purchases;
+
+  /// Product id → category.
+  final Map<int, Category> categories;
 }
 
 class _AnalyticsScreenState extends State<AnalyticsScreen> {
   late final Future<_Data> _data = _load();
 
-  Future<_Data> _load() async =>
-      _Data(await widget.repo.receipts(), await widget.repo.purchases());
+  Future<_Data> _load() async => _Data(
+        await widget.repo.receipts(),
+        await widget.repo.purchases(),
+        {for (final p in await widget.repo.products()) p.id: p.category},
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -54,7 +62,12 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
               _Headline(receipts: data.receipts, index: index),
               _Section(
                 title: 'Spending by month',
-                child: _MonthlySpending(receipts: data.receipts, slots: slots),
+                child: MonthlySpendingChart(receipts: data.receipts, slots: slots),
+              ),
+              _Section(
+                title: 'Spending by category',
+                subtitle: 'All saved receipts, after discounts.',
+                child: _CategorySpending(data: data),
               ),
               _Section(
                 title: 'Your price index',
@@ -167,119 +180,56 @@ class _Headline extends StatelessWidget {
   }
 }
 
-/// Stacked bars: one per month, one segment per store.
-class _MonthlySpending extends StatelessWidget {
-  const _MonthlySpending({required this.receipts, required this.slots});
-  final List<ReceiptSummary> receipts;
-  final Map<String, int> slots;
+/// Horizontal bars, one per category, largest first. One hue: the bars
+/// encode magnitude, and each carries its amount and share as text.
+class _CategorySpending extends StatelessWidget {
+  const _CategorySpending({required this.data});
+  final _Data data;
 
   @override
   Widget build(BuildContext context) {
     final palette = ChartPalette.of(context);
-    final byMonth = <DateTime, Map<String, int>>{};
-    for (final r in receipts) {
-      final m = DateTime(r.purchasedAt.year, r.purchasedAt.month);
-      final store = r.storeName ?? 'Unknown store';
-      byMonth.putIfAbsent(m, () => {});
-      byMonth[m]![store] = (byMonth[m]![store] ?? 0) + r.spentCents;
+    final theme = Theme.of(context);
+    final spent = <Category, int>{};
+    for (final p in data.purchases) {
+      final c = data.categories[p.productId] ?? Category.other;
+      spent[c] = (spent[c] ?? 0) + p.netCents;
     }
-    final months = byMonth.keys.toList()..sort();
-    final shown = months.length > 12 ? months.sublist(months.length - 12) : months;
-    final storeOrder = slots.keys.toList()..sort((a, b) => slots[a]!.compareTo(slots[b]!));
-    Color colorOf(String store) => palette.series(slots[store] ?? 8);
-    final maxY = shown
-        .map((m) => byMonth[m]!.values.fold(0, (s, v) => s + v) / 100)
-        .fold(0.0, math.max);
-
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      if (storeOrder.length >= 2)
-        Wrap(spacing: 12, runSpacing: 4, children: [
-          for (final s in storeOrder) LegendChip(color: colorOf(s), label: s),
-        ]),
-      const SizedBox(height: 8),
-      SizedBox(
-        height: 200,
-        child: BarChart(BarChartData(
-          maxY: _niceMax(maxY),
-          borderData: FlBorderData(
-              show: true, border: Border(bottom: BorderSide(color: palette.baseline))),
-          gridData: FlGridData(
-            drawVerticalLine: false,
-            horizontalInterval: _niceMax(maxY) / 4,
-            getDrawingHorizontalLine: (_) => FlLine(color: palette.grid, strokeWidth: 1),
-          ),
-          titlesData: FlTitlesData(
-            topTitles: const AxisTitles(),
-            rightTitles: const AxisTitles(),
-            leftTitles: AxisTitles(
-              sideTitles: SideTitles(
-                showTitles: true,
-                reservedSize: 44,
-                interval: _niceMax(maxY) / 4,
-                getTitlesWidget: (v, meta) => SideTitleWidget(
-                  meta: meta,
-                  child: Text('\$${v.round()}',
-                      style: TextStyle(color: palette.muted, fontSize: 11)),
-                ),
-              ),
-            ),
-            bottomTitles: AxisTitles(
-              sideTitles: SideTitles(
-                showTitles: true,
-                getTitlesWidget: (v, meta) => SideTitleWidget(
-                  meta: meta,
-                  child: Text(DateFormat.MMM().format(shown[v.toInt()]),
-                      style: TextStyle(color: palette.muted, fontSize: 11)),
-                ),
-              ),
-            ),
-          ),
-          barTouchData: BarTouchData(
-            touchTooltipData: BarTouchTooltipData(
-              getTooltipColor: (_) => palette.ink,
-              getTooltipItem: (group, _, rod, _) {
-                final m = shown[group.x];
-                final parts = byMonth[m]!;
-                return BarTooltipItem(
-                  '${DateFormat.yMMM().format(m)}\n'
-                  '${[for (final s in storeOrder.where(parts.containsKey)) '$s \$${formatCents(parts[s]!)}'].join('\n')}'
-                  '${parts.keys.any((s) => !slots.containsKey(s)) ? '\n${parts.entries.where((e) => !slots.containsKey(e.key)).map((e) => '${e.key} \$${formatCents(e.value)}').join('\n')}' : ''}',
-                  TextStyle(color: palette.surface, fontSize: 12),
-                );
-              },
-            ),
-          ),
-          barGroups: [
-            for (final (i, m) in shown.indexed)
-              () {
-                var from = 0.0;
-                final parts = byMonth[m]!;
-                final stack = <BarChartRodStackItem>[];
-                for (final s in [...storeOrder, ...parts.keys.where((k) => !slots.containsKey(k))]) {
-                  final v = parts[s];
-                  if (v == null) continue;
-                  stack.add(BarChartRodStackItem(from, from + v / 100, colorOf(s),
-                      borderSide: BorderSide(color: palette.surface, width: 1)));
-                  from += v / 100;
-                }
-                return BarChartGroupData(x: i, barRods: [
-                  BarChartRodData(
-                    toY: from,
-                    width: 18,
-                    rodStackItems: stack,
-                    borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
+    if (spent.isEmpty) return const _Empty('No items saved yet.');
+    final rows = spent.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
+    final total = rows.fold(0, (s, e) => s + e.value);
+    final max = rows.first.value;
+    return Column(children: [
+      for (final e in rows)
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: Row(children: [
+            SizedBox(width: 110, child: Text(e.key.label, style: theme.textTheme.bodySmall)),
+            Expanded(
+              child: LayoutBuilder(
+                builder: (context, c) => Align(
+                  alignment: Alignment.centerLeft,
+                  child: Container(
+                    width: math.max(2, c.maxWidth * e.value / max),
+                    height: 14,
+                    decoration: BoxDecoration(
+                      color: palette.series(0),
+                      borderRadius: const BorderRadius.horizontal(right: Radius.circular(4)),
+                    ),
                   ),
-                ]);
-              }(),
-          ],
-        )),
-      ),
-      const SizedBox(height: 8),
-      // The same numbers as text (the lighter colours are low-contrast).
-      for (final m in shown.reversed.take(3))
-        Text(
-          '${DateFormat.yMMMM().format(m)}: \$${formatCents(byMonth[m]!.values.fold(0, (s, v) => s + v))}',
-          style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ),
+            ),
+            SizedBox(
+              width: 96,
+              child: Text(
+                '\$${formatCents(e.value)} · ${(e.value * 100 / total).round()}%',
+                textAlign: TextAlign.right,
+                style: theme.textTheme.bodySmall
+                    ?.copyWith(fontFeatures: const [FontFeature.tabularFigures()]),
+              ),
+            ),
+          ]),
         ),
     ]);
   }
@@ -466,15 +416,6 @@ class _StoreComparison extends StatelessWidget {
         ),
     ]);
   }
-}
-
-double _niceMax(double v) {
-  if (v <= 0) return 10;
-  final step = math.pow(10, (math.log(v / 4) / math.ln10).floor()).toDouble();
-  for (final m in [1, 2, 2.5, 5, 10]) {
-    if (m * step * 4 >= v) return m * step * 4;
-  }
-  return v;
 }
 
 String _percent(double f) => '${f >= 0 ? '+' : '−'}${(f.abs() * 100).toStringAsFixed(1)}%';

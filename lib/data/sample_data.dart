@@ -23,7 +23,7 @@ Future<void> loadSampleReceipts(ReceiptRepository repo) async {
     ]),
     ReceiptDraft(storeName: 'Whole Foods', purchasedAt: DateTime(2026, 9, 27), taxCents: 0, lines: [
       l('MILK 2% 1GAL', 499), l('BANANAS', 190, q: 1.9, unit: 'lb'), l('SOURDOUGH LOAF', 599),
-      l('CHEDDAR 8OZ', 529),
+      l('CHEDDAR 8OZ', 529), l('365 LG BROWN CAGE FREE EGGS 18PK', 449),
     ]),
     ReceiptDraft(storeName: 'Market Basket', purchasedAt: DateTime(2026, 10, 18), taxCents: 57, lines: [
       l('MILK 2% 1GAL', 429), l('MB LG BROWN CAGE FREE 18PK', 1047, q: 3),

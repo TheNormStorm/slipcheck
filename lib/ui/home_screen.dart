@@ -9,7 +9,9 @@ import '../data/sample_data.dart';
 import '../ocr/receipt_reader.dart';
 import 'analytics_screen.dart';
 import 'products_screen.dart';
+import 'chart_palette.dart';
 import 'receipt_detail_screen.dart';
+import 'store_screen.dart';
 import 'review_screen.dart';
 import 'scan_flow.dart';
 
@@ -26,11 +28,19 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   late Future<List<ReceiptSummary>> _receipts = widget.repo.receipts();
+  late Future<List<StoreSummary>> _stores = widget.repo.stores();
   bool _busy = false;
+  bool _byStore = false;
 
   void _reload() => setState(() {
         _receipts = widget.repo.receipts();
+        _stores = widget.repo.stores();
       });
+
+  Future<void> _open(Widget screen) async {
+    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => screen));
+    _reload();
+  }
 
   Future<void> _scan() async {
     final paths = await capturePages(context);
@@ -143,37 +153,70 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
           if (_busy) const LinearProgressIndicator(),
-          Expanded(
-            child: FutureBuilder(
-              future: _receipts,
-              builder: (context, snap) {
-                final receipts = snap.data ?? const [];
-                if (receipts.isEmpty) {
-                  return const Center(child: Text('No receipts yet.'));
-                }
-                return ListView.builder(
-                  itemCount: receipts.length,
-                  itemBuilder: (context, i) {
-                    final r = receipts[i];
-                    return ListTile(
-                      title: Text(r.storeName ?? 'Unknown store'),
-                      subtitle: Text(
-                          '${DateFormat.yMMMd().format(r.purchasedAt)} · ${r.itemCount} items'),
-                      trailing: Text(formatCents(r.spentCents)),
-                      onTap: () async {
-                        await Navigator.of(context).push(MaterialPageRoute(
-                          builder: (_) => ReceiptDetailScreen(repo: widget.repo, receiptId: r.id),
-                        ));
-                        _reload();
-                      },
-                    );
-                  },
-                );
-              },
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+            child: SegmentedButton<bool>(
+              segments: const [
+                ButtonSegment(value: false, label: Text('By date'), icon: Icon(Icons.receipt_long)),
+                ButtonSegment(value: true, label: Text('By store'), icon: Icon(Icons.store)),
+              ],
+              selected: {_byStore},
+              onSelectionChanged: (v) => setState(() => _byStore = v.single),
             ),
           ),
+          Expanded(child: _byStore ? _storeList() : _receiptList()),
         ],
       ),
     );
   }
+
+  Widget _receiptList() => FutureBuilder(
+        future: _receipts,
+        builder: (context, snap) {
+          final receipts = snap.data ?? const [];
+          if (receipts.isEmpty) return const Center(child: Text('No receipts yet.'));
+          return ListView.builder(
+            itemCount: receipts.length,
+            itemBuilder: (context, i) {
+              final r = receipts[i];
+              return ListTile(
+                title: Text(r.storeName ?? 'Unknown store'),
+                subtitle: Text('${DateFormat.yMMMd().format(r.purchasedAt)} · ${r.itemCount} items'),
+                trailing: Text(formatCents(r.spentCents)),
+                onTap: () => _open(ReceiptDetailScreen(repo: widget.repo, receiptId: r.id)),
+              );
+            },
+          );
+        },
+      );
+
+  Widget _storeList() => FutureBuilder(
+        future: _stores,
+        builder: (context, snap) {
+          final stores = (snap.data ?? const <StoreSummary>[])
+              .where((s) => s.receiptCount > 0)
+              .toList();
+          if (stores.isEmpty) return const Center(child: Text('No receipts yet.'));
+          final palette = ChartPalette.of(context);
+          final slots = storeSlots(stores.map((s) => (s.id, s.name)));
+          return ListView.builder(
+            itemCount: stores.length,
+            itemBuilder: (context, i) {
+              final s = stores[i];
+              return ListTile(
+                leading: CircleAvatar(
+                  backgroundColor: palette.series(slots[s.name] ?? 8),
+                  foregroundColor: Colors.white,
+                  child: Text(s.name.characters.first.toUpperCase()),
+                ),
+                title: Text(s.name),
+                subtitle: Text('${s.receiptCount} receipt${s.receiptCount == 1 ? '' : 's'}'
+                    '${s.lastVisit == null ? '' : ' · last ${DateFormat.yMMMd().format(s.lastVisit!)}'}'),
+                trailing: Text(formatCents(s.spentCents)),
+                onTap: () => _open(StoreScreen(repo: widget.repo, storeId: s.id)),
+              );
+            },
+          );
+        },
+      );
 }
