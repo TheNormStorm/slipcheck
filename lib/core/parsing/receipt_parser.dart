@@ -96,7 +96,13 @@ class ReceiptParser {
     final receipt = ParsedReceipt();
     final cleaned = [
       for (final r in rows)
-        if (r.trim().isNotEmpty) r.replaceAll(RegExp(r'\s+'), ' ').trim(),
+        if (r.trim().isNotEmpty)
+          r
+              .replaceAll(RegExp(r'\s+'), ' ')
+              // OCR sometimes splits an amount: "0. 79", "1 .99".
+              .replaceAllMapped(RegExp(r'(\d) ?([.,]) ?(\d{2})\b'),
+                  (m) => '${m[1]}${m[2]}${m[3]}')
+              .trim(),
     ];
 
     receipt.date = findDate(cleaned, dayFirst: dayFirst);

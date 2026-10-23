@@ -93,6 +93,16 @@ void main() {
       expect(r.warnings, isEmpty);
     });
 
+    test('real ML Kit output of grocery_basic, with a split amount', () {
+      final r = parser.parse(fixture('mlkit_grocery_basic'));
+      expect(r.items, hasLength(6));
+      expect(r.items[4].rawText, 'ORANGES');
+      expect(r.items[4].quantity, 3);
+      expect(r.items[4].unitPriceCents, 79);
+      expect(r.totalCents, 2435);
+      expect(r.warnings, isEmpty);
+    });
+
     test('decimal commas and day-first dates', () {
       final r = parser.parse(fixture('dayfirst_comma'));
       expect(r.storeName, 'Bäckerei Corner Shop');
