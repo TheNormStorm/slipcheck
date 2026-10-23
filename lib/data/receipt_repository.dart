@@ -4,6 +4,7 @@ import 'package:drift/drift.dart';
 import '../core/analytics/purchase.dart';
 import '../core/categories.dart';
 import '../core/matching/product_matcher.dart';
+import '../core/money.dart';
 import '../core/matching/product_normalizer.dart';
 import 'database.dart';
 import 'receipt_files.dart';
@@ -549,6 +550,50 @@ class ReceiptRepository {
           );
         }(),
     ];
+  }
+
+  /// Every saved line as CSV, one row per line, for spreadsheets.
+  Future<String> csvExport() async {
+    final rows = await (db.select(db.lineItems).join([
+      innerJoin(db.receipts, db.receipts.id.equalsExp(db.lineItems.receiptId)),
+      leftOuterJoin(db.stores, db.stores.id.equalsExp(db.receipts.storeId)),
+      leftOuterJoin(db.products, db.products.id.equalsExp(db.lineItems.productId)),
+    ])
+          ..orderBy([
+            OrderingTerm.asc(db.receipts.purchasedAt),
+            OrderingTerm.asc(db.receipts.id),
+            OrderingTerm.asc(db.lineItems.position),
+          ]))
+        .get();
+    String cell(Object? v) {
+      final s = v?.toString() ?? '';
+      return RegExp(r'[",\n]').hasMatch(s) ? '"${s.replaceAll('"', '""')}"' : s;
+    }
+
+    String money(int? cents) => cents == null ? '' : formatCents(cents);
+    final out = StringBuffer(
+        'date,store,item,category,quantity,unit,unit_price,line_total,discount,paid,barcode,receipt_id\n');
+    for (final r in rows) {
+      final item = r.readTable(db.lineItems);
+      final receipt = r.readTable(db.receipts);
+      final product = r.readTableOrNull(db.products);
+      final d = receipt.purchasedAt;
+      out.writeln([
+        '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}',
+        r.readTableOrNull(db.stores)?.name,
+        product?.displayName ?? item.rawText,
+        Category.byName(product?.category)?.label,
+        item.quantity == item.quantity.roundToDouble() ? item.quantity.toInt() : item.quantity,
+        item.unit,
+        money(item.quantity == 0 ? null : ((item.lineTotalCents - item.discountCents) / item.quantity).round()),
+        money(item.lineTotalCents),
+        money(item.discountCents),
+        money(item.lineTotalCents - item.discountCents),
+        item.code,
+        receipt.id,
+      ].map(cell).join(','));
+    }
+    return out.toString();
   }
 
   /// An already saved receipt that [draft] is probably a second scan of: same

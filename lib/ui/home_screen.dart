@@ -1,9 +1,16 @@
+import 'dart:io';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart' show DateFormat;
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../core/money.dart';
+import '../data/backup.dart';
 import '../data/receipt_repository.dart';
 import '../data/sample_data.dart';
 import '../ocr/receipt_reader.dart';
@@ -36,6 +43,57 @@ class _HomeScreenState extends State<HomeScreen> {
         _receipts = widget.repo.receipts();
         _stores = widget.repo.stores();
       });
+
+  /// Hands a file to the share sheet; the user picks where it goes (Files,
+  /// Drive, email...). Nothing is sent anywhere otherwise.
+  Future<void> _share(File file, String title) => SharePlus.instance.share(
+        ShareParams(files: [XFile(file.path)], title: title, subject: title),
+      );
+
+  Future<void> _exportCsv() async {
+    final dir = await getTemporaryDirectory();
+    final file = File(p.join(dir.path, 'slipcheck-purchases.csv'));
+    await file.writeAsString(await widget.repo.csvExport());
+    await _share(file, 'Slipcheck purchases');
+  }
+
+  Future<void> _backup() async {
+    final file = await Backup.create(widget.repo.db);
+    await _share(file, 'Slipcheck backup');
+  }
+
+  Future<void> _restore() async {
+    final picked = await FilePicker.pickFiles(dialogTitle: 'Choose a Slipcheck backup');
+    final path = picked.firstOrNull?.path;
+    if (path == null || !mounted) return;
+    final file = File(path);
+    if (!await Backup.isBackup(file)) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('That file is not a Slipcheck backup.')));
+      }
+      return;
+    }
+    if (!mounted) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Restore this backup?'),
+        content: const Text('Everything currently in Slipcheck is replaced by the backup. '
+            'Slipcheck then closes; open it again to continue.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Restore')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    await widget.repo.db.close();
+    await Backup.restore(file);
+    // The open database connection cannot be swapped in place; a fresh start
+    // opens (and if needed upgrades) the restored file.
+    exit(0);
+  }
 
   Future<void> _clearAll() async {
     final count = (await widget.repo.receipts()).length;
@@ -160,8 +218,17 @@ class _HomeScreenState extends State<HomeScreen> {
             )),
           ),
           PopupMenuButton<String>(
-            onSelected: (_) => _clearAll(),
+            onSelected: (v) => switch (v) {
+              'csv' => _exportCsv(),
+              'backup' => _backup(),
+              'restore' => _restore(),
+              _ => _clearAll(),
+            },
             itemBuilder: (_) => const [
+              PopupMenuItem(value: 'csv', child: Text('Export as spreadsheet (CSV)')),
+              PopupMenuItem(value: 'backup', child: Text('Back up…')),
+              PopupMenuItem(value: 'restore', child: Text('Restore from backup…')),
+              PopupMenuDivider(),
               PopupMenuItem(value: 'clear', child: Text('Clear all receipts…')),
             ],
           ),
