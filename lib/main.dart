@@ -1,12 +1,16 @@
 import 'package:flutter/material.dart';
 
 import 'data/database.dart';
+import 'data/receipt_files.dart';
 import 'data/receipt_repository.dart';
 import 'ocr/receipt_reader.dart';
 import 'ui/home_screen.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
   final repo = ReceiptRepository(AppDatabase());
+  // Older OCR dumps may still hold a card section; clean them once.
+  ReceiptFiles.redactExistingDumps().catchError((Object _) {});
   runApp(SlipcheckApp(repo: repo, reader: ReceiptReader()));
 }
 

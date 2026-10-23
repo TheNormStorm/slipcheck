@@ -3,6 +3,7 @@ import 'package:drift_flutter/drift_flutter.dart';
 
 import '../core/categories.dart';
 import '../core/parsing/receipt_parser.dart';
+import '../core/parsing/redaction.dart';
 
 part 'database.g.dart';
 
@@ -101,7 +102,7 @@ class AppDatabase extends _$AppDatabase {
       : super(executor ?? driftDatabase(name: 'slipcheck'));
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   /// For receipts saved before version 3: re-reads each receipt's stored OCR
   /// text to recover the barcode and department heading of every line, then
@@ -145,6 +146,15 @@ class AppDatabase extends _$AppDatabase {
             await m.addColumn(lineItems, lineItems.code);
             await m.addColumn(lineItems, lineItems.section);
             await _backfillCodesAndCategories();
+          }
+          if (from < 4) {
+            // Card numbers and approval codes used to be kept in the OCR text.
+            for (final r in await select(receipts).get()) {
+              final text = r.ocrText;
+              if (text == null) continue;
+              await (update(receipts)..where((t) => t.id.equals(r.id))).write(ReceiptsCompanion(
+                  ocrText: Value(withoutPaymentSection(text.split('\n')).join('\n'))));
+            }
           }
         },
         beforeOpen: (details) async {

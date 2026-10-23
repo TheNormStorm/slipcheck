@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:google_mlkit_document_scanner/google_mlkit_document_scanner.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../core/parsing/redaction.dart';
 import '../data/receipt_repository.dart';
 import '../ocr/receipt_reader.dart';
 
@@ -84,7 +85,8 @@ class ScanSession {
       taxCents: parsed.taxCents,
       totalCents: parsed.totalCents,
       imagePaths: result.imagePaths,
-      ocrText: result.stitch.rows.join('\n'),
+      // Card numbers and approval codes are not kept.
+      ocrText: withoutPaymentSection(result.stitch.rows).join('\n'),
     );
   }
 

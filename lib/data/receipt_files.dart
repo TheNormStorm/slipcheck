@@ -1,7 +1,11 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+
+import '../core/parsing/ocr_line.dart';
+import '../core/parsing/redaction.dart';
 
 /// Where receipt photos and their OCR dumps live, and how they are removed.
 ///
@@ -33,6 +37,28 @@ class ReceiptFiles {
       final file = File(path);
       if (await file.exists()) await file.delete();
     }
+  }
+
+  /// Rewrites OCR dumps saved before card sections were left out, once.
+  static Future<void> redactExistingDumps() async {
+    final photos = await photosDir();
+    final marker = File(p.join(photos.path, '.card-sections-removed'));
+    if (!await photos.exists() || await marker.exists()) return;
+    for (final dir in [photos, await externalOcrDir()]) {
+      if (dir == null || !await dir.exists()) continue;
+      await for (final f in dir.list()) {
+        if (f is! File || !f.path.endsWith('.json')) continue;
+        final lines = [
+          for (final l in jsonDecode(await f.readAsString()) as List)
+            OcrLine.fromJson(l as Map<String, dynamic>),
+        ];
+        final kept = withoutPaymentLines(lines);
+        if (kept.length != lines.length) {
+          await f.writeAsString(jsonEncode([for (final l in kept) l.toJson()]));
+        }
+      }
+    }
+    await marker.writeAsString('');
   }
 
   /// Deletes every photo and OCR dump, including those of scans that were

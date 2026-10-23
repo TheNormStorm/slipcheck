@@ -7,6 +7,7 @@ import 'package:path/path.dart' as p;
 import '../core/parsing/ocr_line.dart';
 import '../core/parsing/page_quality.dart';
 import '../core/parsing/receipt_parser.dart';
+import '../core/parsing/redaction.dart';
 import '../core/parsing/stitcher.dart';
 import '../data/receipt_files.dart';
 
@@ -53,7 +54,8 @@ class ReceiptReader {
             confidence: line.confidence,
           ),
     ];
-    await _saveOcrDump(imagePath, lines);
+    // The card section is left out of the saved OCR lines.
+    await _saveOcrDump(imagePath, withoutPaymentLines(lines));
     return PageRead(imagePath, groupIntoRows(lines), pageProblem(lines));
   }
 
