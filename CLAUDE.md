@@ -7,6 +7,9 @@ Do not add cloud OCR/LLM services without asking.
 - `lib/core/` — pure Dart, no Flutter imports. Parsing (`parsing/`: row grouping,
   multi-photo stitching, page quality, receipt parser) and product matching
   (`matching/`). All logic that can be unit-tested lives here.
+- `lib/core/analytics/` — receipt diff, personal price index, price changes,
+  store comparison. Price comparisons are like-for-like (same store and unit);
+  the receipt diff's parts must always sum to the difference (tested).
 - `lib/data/` — drift SQLite database (`database.dart`, generated `database.g.dart`)
   and `ReceiptRepository`.
 - `lib/ocr/` — ML Kit adapter that turns an image into `OcrLine`s (text + bounding box).

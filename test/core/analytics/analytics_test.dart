@@ -122,6 +122,18 @@ void main() {
       expect(points.last.value, closeTo(125, 1e-9));
     });
 
+    test('changing stores is not a price change', () {
+      Purchase at(int r, int store, int cents, DateTime d) => Purchase(
+          receiptId: r, date: d, storeId: store, storeName: 'S$store', productId: 1,
+          productName: 'MILK', quantity: 1, unit: 'each', netCents: cents);
+      final points = personalPriceIndex([
+        at(1, 1, 389, DateTime(2026, 8, 9)),
+        at(2, 2, 489, DateTime(2026, 8, 23)),
+        at(3, 1, 409, DateTime(2026, 9, 13)), // +5.1% at store 1
+      ]);
+      expect(points.last.value, closeTo(100 * 409 / 389, 1e-9));
+    });
+
     test('a weighed item is compared per pound', () {
       final points = personalPriceIndex([
         buy(1, 1, 'BANANAS', 2, 138, unit: 'lb', date: DateTime(2026, 8, 1)),

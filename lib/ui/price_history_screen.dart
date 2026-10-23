@@ -5,6 +5,7 @@ import 'package:intl/intl.dart' show DateFormat;
 
 import '../core/money.dart';
 import '../data/receipt_repository.dart';
+import 'chart_palette.dart';
 
 /// Testing UI: one product's unit price over time, coloured by store.
 class PriceHistoryScreen extends StatelessWidget {
@@ -12,11 +13,6 @@ class PriceHistoryScreen extends StatelessWidget {
 
   final ReceiptRepository repo;
   final ProductSummary product;
-
-  static const _palette = [
-    Colors.teal, Colors.deepOrange, Colors.indigo, Colors.pink,
-    Colors.brown, Colors.lightGreen, Colors.purple, Colors.blueGrey,
-  ];
 
   @override
   Widget build(BuildContext context) {
@@ -27,9 +23,10 @@ class PriceHistoryScreen extends StatelessWidget {
         builder: (context, snap) {
           final points = snap.data ?? const <PricePoint>[];
           if (points.isEmpty) return const SizedBox.shrink();
-          final stores = {for (final p in points) p.storeName ?? '?'}.toList();
-          Color colorOf(PricePoint p) =>
-              _palette[stores.indexOf(p.storeName ?? '?') % _palette.length];
+          final palette = ChartPalette.of(context);
+          final slots = storeSlots(points.map((p) => (p.storeId, p.storeName)));
+          final stores = slots.keys.toList()..sort((a, b) => slots[a]!.compareTo(slots[b]!));
+          Color colorOf(PricePoint p) => palette.series(slots[p.storeName] ?? 8);
           final weighed = points.where((p) => p.unit != 'each').firstOrNull;
 
           return ListView(
@@ -49,7 +46,7 @@ class PriceHistoryScreen extends StatelessWidget {
                 for (final s in stores)
                   Row(mainAxisSize: MainAxisSize.min, children: [
                     Icon(Icons.circle, size: 10,
-                        color: _palette[stores.indexOf(s) % _palette.length]),
+                        color: palette.series(slots[s]!)),
                     const SizedBox(width: 4),
                     Text(s),
                   ]),

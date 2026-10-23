@@ -1,5 +1,8 @@
 import 'package:drift/drift.dart';
 
+import 'dart:io';
+
+import '../core/analytics/purchase.dart';
 import '../core/matching/product_matcher.dart';
 import '../core/matching/product_normalizer.dart';
 import 'database.dart';
@@ -63,12 +66,42 @@ class ReceiptDraft {
 }
 
 class ReceiptSummary {
-  ReceiptSummary(this.id, this.storeName, this.purchasedAt, this.totalCents, this.itemCount);
+  ReceiptSummary(this.id, this.storeName, this.purchasedAt, this.totalCents, this.itemCount,
+      {this.storeId, this.itemsCents = 0, this.taxCents});
   final int id;
+  final int? storeId;
   final String? storeName;
   final DateTime purchasedAt;
   final int? totalCents;
   final int itemCount;
+
+  /// What the saved lines add up to, after discounts.
+  final int itemsCents;
+  final int? taxCents;
+
+  /// The printed total when it was read, otherwise items plus tax.
+  int get spentCents => totalCents ?? itemsCents + (taxCents ?? 0);
+}
+
+/// A saved receipt with its lines, for viewing and comparing.
+class ReceiptDetail {
+  ReceiptDetail({
+    required this.summary,
+    required this.lines,
+    required this.purchases,
+    required this.imagePaths,
+    this.subtotalCents,
+  });
+
+  final ReceiptSummary summary;
+
+  /// As printed, in receipt order.
+  final List<DraftLine> lines;
+
+  /// The same lines as purchases of known products, for analysis.
+  final List<Purchase> purchases;
+  final List<String> imagePaths;
+  final int? subtotalCents;
 }
 
 class ProductSummary {
@@ -91,9 +124,11 @@ class PricePoint {
     required this.quantity,
     required this.unit,
     required this.netCents,
+    this.storeId,
   });
   final int receiptId;
   final DateTime date;
+  final int? storeId;
   final String? storeName;
   final double quantity;
   final String unit;
@@ -229,15 +264,17 @@ class ReceiptRepository {
     }
   }
 
-  Future<List<ReceiptSummary>> receipts() async {
+  Future<List<ReceiptSummary>> receipts({int? id}) async {
     final count = db.lineItems.id.count();
+    final net = (db.lineItems.lineTotalCents - db.lineItems.discountCents).sum();
     final query = db.select(db.receipts).join([
       leftOuterJoin(db.stores, db.stores.id.equalsExp(db.receipts.storeId)),
       leftOuterJoin(db.lineItems, db.lineItems.receiptId.equalsExp(db.receipts.id)),
     ])
-      ..addColumns([count])
+      ..addColumns([count, net])
       ..groupBy([db.receipts.id])
       ..orderBy([OrderingTerm.desc(db.receipts.purchasedAt), OrderingTerm.desc(db.receipts.id)]);
+    if (id != null) query.where(db.receipts.id.equals(id));
     final rows = await query.get();
     return [
       for (final r in rows)
@@ -247,8 +284,97 @@ class ReceiptRepository {
           r.readTable(db.receipts).purchasedAt,
           r.readTable(db.receipts).totalCents,
           r.read(count) ?? 0,
+          storeId: r.readTable(db.receipts).storeId,
+          itemsCents: r.read(net) ?? 0,
+          taxCents: r.readTable(db.receipts).taxCents,
         ),
     ];
+  }
+
+  Future<ReceiptDetail> receipt(int id) async {
+    final summary = (await receipts(id: id)).single;
+    final receiptRow =
+        await (db.select(db.receipts)..where((r) => r.id.equals(id))).getSingle();
+    final rows = await (db.select(db.lineItems).join([
+      leftOuterJoin(db.products, db.products.id.equalsExp(db.lineItems.productId)),
+    ])
+          ..where(db.lineItems.receiptId.equals(id))
+          ..orderBy([OrderingTerm.asc(db.lineItems.position)]))
+        .get();
+    final images = await (db.select(db.receiptImages)
+          ..where((i) => i.receiptId.equals(id))
+          ..orderBy([(i) => OrderingTerm.asc(i.position)]))
+        .get();
+    return ReceiptDetail(
+      summary: summary,
+      subtotalCents: receiptRow.subtotalCents,
+      lines: [
+        for (final r in rows)
+          () {
+            final item = r.readTable(db.lineItems);
+            return DraftLine(
+              name: r.readTableOrNull(db.products)?.displayName ?? item.rawText,
+              originalText: item.rawText,
+              quantity: item.quantity,
+              unit: item.unit,
+              unitPriceCents: item.unitPriceCents,
+              lineTotalCents: item.lineTotalCents,
+              discountCents: item.discountCents,
+              productId: item.productId,
+            );
+          }(),
+      ],
+      purchases: await purchases(receiptId: id),
+      imagePaths: [for (final i in images) i.path],
+    );
+  }
+
+  /// Every purchase of a known product, oldest first; or one receipt's.
+  Future<List<Purchase>> purchases({int? receiptId}) async {
+    final query = db.select(db.lineItems).join([
+      innerJoin(db.receipts, db.receipts.id.equalsExp(db.lineItems.receiptId)),
+      innerJoin(db.products, db.products.id.equalsExp(db.lineItems.productId)),
+      leftOuterJoin(db.stores, db.stores.id.equalsExp(db.receipts.storeId)),
+    ])
+      ..orderBy([OrderingTerm.asc(db.receipts.purchasedAt), OrderingTerm.asc(db.receipts.id)]);
+    if (receiptId != null) query.where(db.lineItems.receiptId.equals(receiptId));
+    final rows = await query.get();
+    return [
+      for (final r in rows)
+        () {
+          final item = r.readTable(db.lineItems);
+          final receipt = r.readTable(db.receipts);
+          final store = r.readTableOrNull(db.stores);
+          return Purchase(
+            receiptId: receipt.id,
+            date: receipt.purchasedAt,
+            storeId: store?.id,
+            storeName: store?.name,
+            productId: item.productId!,
+            productName: r.readTable(db.products).displayName,
+            quantity: item.quantity,
+            unit: item.unit,
+            netCents: item.lineTotalCents - item.discountCents,
+          );
+        }(),
+    ];
+  }
+
+  /// Deletes a receipt, its lines and its photos. Products and learned
+  /// names stay, as other receipts may use them.
+  Future<void> deleteReceipt(int id) async {
+    final images = await (db.select(db.receiptImages)..where((i) => i.receiptId.equals(id))).get();
+    await db.transaction(() async {
+      await (db.delete(db.lineItems)..where((l) => l.receiptId.equals(id))).go();
+      await (db.delete(db.receiptImages)..where((i) => i.receiptId.equals(id))).go();
+      await (db.delete(db.receipts)..where((r) => r.id.equals(id))).go();
+    });
+    for (final image in images) {
+      for (final path in [image.path, '${image.path.replaceFirst(RegExp(r'\.\w+$'), '')}.ocr.json']) {
+        final file = File(path);
+        if (await file.exists()) await file.delete();
+      }
+    }
   }
 
   Future<List<ProductSummary>> products() async {
@@ -282,6 +408,7 @@ class ReceiptRepository {
             receiptId: receipt.id,
             date: receipt.purchasedAt,
             storeName: r.readTableOrNull(db.stores)?.name,
+            storeId: r.readTableOrNull(db.stores)?.id,
             quantity: item.quantity,
             unit: item.unit,
             netCents: item.lineTotalCents - item.discountCents,

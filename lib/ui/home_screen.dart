@@ -1,11 +1,15 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart' show DateFormat;
 
 import '../core/money.dart';
 import '../data/receipt_repository.dart';
+import '../data/sample_data.dart';
 import '../ocr/receipt_reader.dart';
+import 'analytics_screen.dart';
 import 'products_screen.dart';
+import 'receipt_detail_screen.dart';
 import 'review_screen.dart';
 import 'scan_flow.dart';
 
@@ -24,7 +28,9 @@ class _HomeScreenState extends State<HomeScreen> {
   late Future<List<ReceiptSummary>> _receipts = widget.repo.receipts();
   bool _busy = false;
 
-  void _reload() => setState(() => _receipts = widget.repo.receipts());
+  void _reload() => setState(() {
+        _receipts = widget.repo.receipts();
+      });
 
   Future<void> _scan() async {
     final paths = await capturePages(context);
@@ -76,8 +82,24 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Slipcheck'),
+        title: GestureDetector(
+          // Debug builds only: long-press the title to load sample receipts.
+          onLongPress: kDebugMode
+              ? () async {
+                  await loadSampleReceipts(widget.repo);
+                  _reload();
+                }
+              : null,
+          child: const Text('Slipcheck'),
+        ),
         actions: [
+          IconButton(
+            tooltip: 'Analytics',
+            icon: const Icon(Icons.insights),
+            onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+              builder: (_) => AnalyticsScreen(repo: widget.repo),
+            )),
+          ),
           TextButton.icon(
             icon: const Icon(Icons.show_chart),
             label: const Text('Items'),
@@ -137,7 +159,13 @@ class _HomeScreenState extends State<HomeScreen> {
                       title: Text(r.storeName ?? 'Unknown store'),
                       subtitle: Text(
                           '${DateFormat.yMMMd().format(r.purchasedAt)} · ${r.itemCount} items'),
-                      trailing: Text(r.totalCents == null ? '' : formatCents(r.totalCents!)),
+                      trailing: Text(formatCents(r.spentCents)),
+                      onTap: () async {
+                        await Navigator.of(context).push(MaterialPageRoute(
+                          builder: (_) => ReceiptDetailScreen(repo: widget.repo, receiptId: r.id),
+                        ));
+                        _reload();
+                      },
                     );
                   },
                 );

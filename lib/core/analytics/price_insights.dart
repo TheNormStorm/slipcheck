@@ -18,24 +18,26 @@ class IndexPoint {
 /// Personal inflation: how the prices of the things *you* buy moved.
 ///
 /// Each month, every product bought both that month and at some earlier
-/// time gets a price relative (this month's median unit price over its most
-/// recent earlier unit price). The month's step is the geometric mean of
-/// those relatives (a Jevons index, which one big-ticket item cannot
-/// dominate), and steps are chained. Only same-unit prices are compared.
+/// time *at the same store* gets a price relative (this month's median unit
+/// price over its most recent earlier unit price there). The month's step is
+/// the geometric mean of those relatives (a Jevons index, which one
+/// big-ticket item cannot dominate), and steps are chained. Like-for-like
+/// only: same store, same unit. Changing stores is not a price change; the
+/// store comparison shows that.
 List<IndexPoint> personalPriceIndex(List<Purchase> purchases) {
   final byMonth = <DateTime, List<Purchase>>{};
   for (final p in purchases) {
     byMonth.putIfAbsent(DateTime(p.date.year, p.date.month), () => []).add(p);
   }
   final months = byMonth.keys.toList()..sort();
-  final lastPrice = <(int, String), double>{};
+  final lastPrice = <(int, String, int?), double>{};
   final points = <IndexPoint>[];
   var value = 100.0;
 
   for (final month in months) {
-    final prices = <(int, String), List<double>>{};
+    final prices = <(int, String, int?), List<double>>{};
     for (final p in byMonth[month]!) {
-      prices.putIfAbsent((p.productId, p.unit), () => []).add(p.unitPrice);
+      prices.putIfAbsent((p.productId, p.unit, p.storeId), () => []).add(p.unitPrice);
     }
     final logs = <double>[];
     for (final e in prices.entries) {
@@ -50,7 +52,7 @@ List<IndexPoint> personalPriceIndex(List<Purchase> purchases) {
     for (final e in prices.entries) {
       // The month's last purchase is the reference for the next month.
       final lastOfMonth = byMonth[month]!
-          .where((p) => (p.productId, p.unit) == e.key)
+          .where((p) => (p.productId, p.unit, p.storeId) == e.key)
           .reduce((a, b) => b.date.isBefore(a.date) ? a : b);
       lastPrice[e.key] = lastOfMonth.unitPrice;
     }
@@ -79,12 +81,13 @@ class PriceChange {
   double get changeFraction => latest.unitPrice / typicalUnitPrice - 1;
 }
 
-/// Latest price of each product compared with its own earlier purchases,
-/// biggest moves first. Products bought only once are skipped.
+/// Latest price of each product at each store compared with what you
+/// usually paid for it there, biggest moves first. Products bought only once
+/// at a store are skipped.
 List<PriceChange> priceChanges(List<Purchase> purchases, {double minChange = 0.01}) {
-  final byProduct = <(int, String), List<Purchase>>{};
+  final byProduct = <(int, String, int?), List<Purchase>>{};
   for (final p in purchases) {
-    byProduct.putIfAbsent((p.productId, p.unit), () => []).add(p);
+    byProduct.putIfAbsent((p.productId, p.unit, p.storeId), () => []).add(p);
   }
   final out = <PriceChange>[];
   for (final history in byProduct.values) {

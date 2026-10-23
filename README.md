@@ -29,3 +29,15 @@ per-product price history.
 "MILK 2% 1L" and "Milk 2% 1 litre" are matched through a normalised product key
 (`milk 2% 1000ml`); fuzzy matches are only suggested, and each confirmation is
 remembered as an alias.
+
+## Analytics (all on the phone)
+
+- **Compare two receipts** (open a receipt → compare): the difference is split
+  exactly into price changes, buying more or less (midpoint decomposition),
+  items on only one receipt, and tax, then explained in sentences.
+- **Your price index**: like-for-like price moves of what you buy (same item,
+  same store), geometric mean per month, chained.
+- **Biggest price changes**: latest price against your usual at that store.
+- **Store comparison**: median price per store for items bought at several.
+
+Debug builds only: long-press the title to load sample receipts.

@@ -21,6 +21,7 @@ class SlipcheckApp extends StatelessWidget {
     return MaterialApp(
       title: 'Slipcheck',
       theme: ThemeData(colorSchemeSeed: Colors.teal),
+      darkTheme: ThemeData(colorSchemeSeed: Colors.teal, brightness: Brightness.dark),
       home: HomeScreen(repo: repo, reader: reader),
     );
   }

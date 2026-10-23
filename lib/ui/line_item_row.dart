@@ -25,9 +25,10 @@ class LineItemRow extends StatelessWidget {
     super.key,
     required this.line,
     required this.match,
-    required this.linked,
-    required this.onTap,
-    required this.onLink,
+    this.linked = false,
+    this.onTap,
+    this.onLink,
+    this.note,
   });
 
   final DraftLine line;
@@ -35,8 +36,13 @@ class LineItemRow extends StatelessWidget {
 
   /// Whether the user confirmed a fuzzy [match].
   final bool linked;
-  final VoidCallback onTap;
-  final ValueChanged<bool> onLink;
+
+  /// Null makes the row read-only.
+  final VoidCallback? onTap;
+  final ValueChanged<bool>? onLink;
+
+  /// Extra line under the details, e.g. how the price compares to usual.
+  final Widget? note;
 
   @override
   Widget build(BuildContext context) {
@@ -67,6 +73,7 @@ class LineItemRow extends StatelessWidget {
                     Text('Discount −${formatCents(line.discountCents)}',
                         style: muted?.copyWith(color: Colors.green.shade700)),
                   _matchInfo(context, muted),
+                  ?note,
                 ],
               ),
             ),
@@ -119,7 +126,7 @@ class LineItemRow extends StatelessWidget {
               visualDensity: VisualDensity.compact,
               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
             ),
-            onPressed: () => onLink(!linked),
+            onPressed: onLink == null ? null : () => onLink!(!linked),
             child: Text(linked ? 'Undo' : 'Yes, link'),
           ),
         ]);

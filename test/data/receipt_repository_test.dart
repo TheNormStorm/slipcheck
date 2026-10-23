@@ -90,4 +90,38 @@ void main() {
         .get();
     expect(images.map((i) => i.path), ['/top.jpg', '/middle.jpg', '/bottom.jpg']);
   });
+
+  test('purchases carry store, date and net price per known product', () async {
+    await repo.saveReceipt(draft('FreshMart', DateTime(2026, 9, 1), [
+      DraftLine(name: 'MILK 2% 1L', lineTotalCents: 469),
+      DraftLine(name: 'Cheddar 400g', lineTotalCents: 799, discountCents: 100),
+    ]));
+    final purchases = await repo.purchases();
+    expect(purchases.map((p) => (p.storeName, p.productName, p.netCents)).toList(), [
+      ('FreshMart', 'MILK 2% 1L', 469),
+      ('FreshMart', 'Cheddar 400g', 699),
+    ]);
+  });
+
+  test('receipt detail and summary totals', () async {
+    final id = await repo.saveReceipt(draft('FreshMart', DateTime(2026, 9, 1), [
+      DraftLine(name: 'Bananas', quantity: 1.25, unit: 'kg', lineTotalCents: 190),
+      DraftLine(name: 'Cheddar 400g', lineTotalCents: 799, discountCents: 100),
+    ])..taxCents = 12);
+    final detail = await repo.receipt(id);
+    expect(detail.lines.map((l) => l.name), ['Bananas', 'Cheddar 400g']);
+    expect(detail.summary.itemsCents, 889);
+    expect(detail.summary.spentCents, 901); // no printed total: items + tax
+    expect(detail.purchases, hasLength(2));
+  });
+
+  test('deleting a receipt removes its lines but keeps products', () async {
+    final id = await repo.saveReceipt(draft('FreshMart', DateTime(2026, 9, 1), [
+      DraftLine(name: 'MILK 2% 1L', lineTotalCents: 469),
+    ]));
+    await repo.deleteReceipt(id);
+    expect(await repo.receipts(), isEmpty);
+    expect(await db.select(db.lineItems).get(), isEmpty);
+    expect(await db.select(db.products).get(), hasLength(1));
+  });
 }
