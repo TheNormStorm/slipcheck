@@ -155,52 +155,81 @@ bool _sameKey(String ka, String kb, double threshold) {
 /// Finds the order of [pages] (photos of one receipt, in any order) whose
 /// overlaps join up best, returned as indexes into [pages].
 ///
-/// Photos picked from a gallery arrive in whatever order the picker gives,
-/// so every order is tried for up to [maxPages] photos. An order wins with
-/// more joins found, then more agreeing rows, then with no TOTAL line before
-/// the last photo (what decides it when the photos do not overlap at all);
-/// ties keep the given order.
-List<int> bestPageOrder(List<List<String>> pages, {int maxPages = 5}) {
-  final identity = [for (var i = 0; i < pages.length; i++) i];
-  if (pages.length < 2 || pages.length > maxPages) return identity;
+/// Photos picked from a gallery arrive in whatever order the picker gives.
+/// Every ordered pair of photos is aligned once, then the chain through all
+/// photos with the most joins found, then the most agreeing rows, is chosen
+/// (a longest-path search over subsets: fast for the scanner's 8 photos).
+/// When the photos do not overlap at all, the given order is kept except
+/// that a photo with a TOTAL line goes last. Ties keep the given order.
+List<int> bestPageOrder(List<List<String>> pages, {int maxPages = 8}) {
+  final n = pages.length;
+  final identity = [for (var i = 0; i < n; i++) i];
+  if (n < 2 || n > maxPages) return identity;
 
-  final hasTotal = [for (final page in pages) page.any(_totalRow.hasMatch)];
-
-  (int, int, int) score(List<int> order) {
-    final joins = stitchPages([for (final i in order) pages[i]]).joins;
-    return (
-      joins.where((j) => j.found).length,
-      joins.fold(0, (s, j) => s + j.matchingRows),
-      -[for (final i in order.sublist(0, order.length - 1)) if (hasTotal[i]) i].length,
-    );
-  }
-
-  bool better((int, int, int) a, (int, int, int) b) =>
-      a.$1 != b.$1 ? a.$1 > b.$1 : a.$2 != b.$2 ? a.$2 > b.$2 : a.$3 > b.$3;
-
-  var best = identity;
-  var bestScore = score(identity);
-  for (final order in _permutations(identity)) {
-    final s = score(order);
-    if (better(s, bestScore)) {
-      best = order;
-      bestScore = s;
+  // Pair scores: joins found (0/1) and agreeing rows when [b] follows [a].
+  final pair = List.generate(n, (_) => List.filled(n, (0, 0)));
+  for (var a = 0; a < n; a++) {
+    for (var b = 0; b < n; b++) {
+      if (a == b) continue;
+      final join = stitchPages([pages[a], pages[b]]).joins.single;
+      pair[a][b] = join.found ? (1, join.matchingRows) : (0, 0);
     }
   }
-  return best;
+  (int, int) add((int, int) x, (int, int) y) => (x.$1 + y.$1, x.$2 + y.$2);
+  bool better((int, int) x, (int, int) y) => x.$1 != y.$1 ? x.$1 > y.$1 : x.$2 > y.$2;
+  (int, int) score(List<int> order) {
+    var s = (0, 0);
+    for (var i = 1; i < order.length; i++) {
+      s = add(s, pair[order[i - 1]][order[i]]);
+    }
+    return s;
+  }
+
+  // best[mask][last]: best score of a chain using the photos in mask, ending at last.
+  final size = 1 << n;
+  final best = List.generate(size, (_) => List<(int, int)?>.filled(n, null));
+  final prev = List.generate(size, (_) => List.filled(n, -1));
+  for (var i = 0; i < n; i++) {
+    best[1 << i][i] = (0, 0);
+  }
+  for (var mask = 1; mask < size; mask++) {
+    for (var last = 0; last < n; last++) {
+      final here = best[mask][last];
+      if (here == null) continue;
+      for (var next = 0; next < n; next++) {
+        if (mask & (1 << next) != 0) continue;
+        final m = mask | (1 << next);
+        final s = add(here, pair[last][next]);
+        final cur = best[m][next];
+        if (cur == null || better(s, cur)) {
+          best[m][next] = s;
+          prev[m][next] = last;
+        }
+      }
+    }
+  }
+  var end = 0;
+  for (var i = 1; i < n; i++) {
+    if (better(best[size - 1][i]!, best[size - 1][end]!)) end = i;
+  }
+  final top = best[size - 1][end]!;
+
+  if (top.$1 == 0) {
+    // No overlaps at all: keep the given order, TOTAL photo(s) last.
+    final hasTotal = [for (final page in pages) page.any(_totalRow.hasMatch)];
+    return [...identity.where((i) => !hasTotal[i]), ...identity.where((i) => hasTotal[i])];
+  }
+  if (!better(top, score(identity))) return identity;
+
+  final order = <int>[];
+  var mask = size - 1, at = end;
+  while (at >= 0) {
+    order.add(at);
+    final p = prev[mask][at];
+    mask &= ~(1 << at);
+    at = p;
+  }
+  return order.reversed.toList();
 }
 
 final _totalRow = RegExp(r'^\s*(sub\s*total|total)\b', caseSensitive: false);
-
-Iterable<List<int>> _permutations(List<int> items) sync* {
-  if (items.length <= 1) {
-    yield items;
-    return;
-  }
-  for (var i = 0; i < items.length; i++) {
-    final rest = [...items]..removeAt(i);
-    for (final p in _permutations(rest)) {
-      yield [items[i], ...p];
-    }
-  }
-}

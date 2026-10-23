@@ -132,4 +132,13 @@ void main() {
     expect(r.items.where((i) => i.rawText.startsWith('93% X-LEAN')).map((i) => i.lineTotalCents),
         [846, 755]);
   });
+
+  test('eight shuffled photos (the scanner maximum) are put in order, quickly', () {
+    final pages = [for (var i = 0; i < 8; i++) full.sublist(i * 8, (i * 8 + 12).clamp(0, full.length))];
+    final shuffled = [3, 7, 0, 5, 1, 6, 2, 4];
+    final watch = Stopwatch()..start();
+    final order = bestPageOrder([for (final i in shuffled) pages[i]]);
+    expect([for (final i in order) shuffled[i]], [0, 1, 2, 3, 4, 5, 6, 7]);
+    expect(watch.elapsedMilliseconds, lessThan(1500));
+  });
 }
