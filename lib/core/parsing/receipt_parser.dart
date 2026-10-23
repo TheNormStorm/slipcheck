@@ -84,7 +84,7 @@ class ReceiptParser {
   // ©, "lb" read as "1b", "]b" or "lt". Too loose to trust alone, so they are
   // only used when the price they imply matches a price on the receipt.
   static final _looseWeight = RegExp(
-      r'^(\d{1,3}[.,]\d{3})\s*(kg|lbs?|[1il|\]!][bt])\s*\S?\s*\$?(\d{1,4}[.,]\d{2})',
+      r'^(\d{1,3}[.,]\d{3})\s*(kg|lbs?|[1il|\]!J]{1,2}[bt])\s*\S?\s*\$?(\d{1,4}[.,]\d{2})',
       caseSensitive: false);
   static final _looseCount =
       RegExp(r'^(\d{1,2})\s*(?:[@09©®eaQ]|\s)\s*\$?(\d{1,4}[.,]\d{2})$');
@@ -125,6 +125,8 @@ class ReceiptParser {
               // OCR sometimes splits an amount: "0. 79", "1 .99".
               .replaceAllMapped(RegExp(r'(\d) ?([.,]) ?(\d{2})\b'),
                   (m) => '${m[1]}${m[2]}${m[3]}')
+              // ...or reads a 0 as O inside it: "$O.99".
+              .replaceAllMapped(RegExp(r'(?<=[\s$])O(?=[.,]\d{2})'), (m) => '0')
               // ...or loses its point before a tax code: "16 78 F".
               .replaceAllMapped(RegExp(r'(\d{1,3}) (\d{2}) ([A-Z])$'),
                   (m) => '${m[1]}.${m[2]} ${m[3]}')
@@ -201,7 +203,9 @@ class ReceiptParser {
         seenTotal = true;
         continue;
       }
-      if (amount != null && _tax.hasMatch(desc) && !_hasItemWords(desc)) {
+      if (amount != null &&
+          _tax.hasMatch(desc) &&
+          (desc.contains('%') || !_hasItemWords(desc))) {
         receipt.taxCents = (receipt.taxCents ?? 0) + amount;
         continue;
       }

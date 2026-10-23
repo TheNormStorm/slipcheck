@@ -37,17 +37,25 @@ class StitchResult {
 
 /// Joins the text rows of several photos of one long receipt.
 ///
-/// The user overlaps consecutive photos by a few lines. For each new page the
-/// best alignment between the end of the text so far and the start of the
-/// page is searched for; the overlapping rows are kept once. Rows are
-/// compared fuzzily because OCR reads the same line slightly differently in
-/// two photos, and at least [minMatches] rows must agree so that two
-/// identical purchases in a row are not mistaken for an overlap.
+/// The user overlaps consecutive photos, by a few lines or by half a photo.
+/// Each new page is aligned against the text so far like a diff: the longest
+/// sequence of rows that read (fuzzily) the same in both, in order. Rows are
+/// compared fuzzily because OCR reads a line slightly differently in two
+/// photos, and the alignment tolerates a line that one photo splits in two
+/// ("4235" / "PLANTAINS" against "4235  PLANTAINS  1.50 F").
+///
+/// An overlap is accepted when at least [minMatches] rows agree (so two
+/// identical purchases in a row are not mistaken for one), the agreement
+/// reaches the end of the text so far, and starts near the top of the page.
+/// Within it, of each pair of matching rows the better reading is kept;
+/// unmatched rows after it at the bottom of the earlier photo, and before it
+/// at the top of the new one, were cut by the photo edge and are dropped.
 StitchResult stitchPages(
   List<List<String>> pages, {
   int minMatches = 2,
-  int maxOverlap = 15,
-  int maxSkippedTop = 3,
+  int maxSkippedTop = 5,
+  int maxSkippedBottom = 4,
+  int searchRows = 150,
   double rowThreshold = 0.8,
 }) {
   final rows = <String>[];
@@ -61,61 +69,85 @@ StitchResult stitchPages(
       continue;
     }
 
-    _Alignment? best;
-    // i: where the overlap starts in the text so far.
-    // j: rows skipped at the top of the new page (a line cut by the photo edge).
-    for (var i = math.max(0, rows.length - maxOverlap); i < rows.length; i++) {
-      for (var j = 0; j <= maxSkippedTop && j < page.length; j++) {
-        final window = math.min(rows.length - i, page.length - j);
-        var matches = 0;
-        for (var t = 0; t < window; t++) {
-          if (_sameRow(rows[i + t], page[j + t], rowThreshold)) matches++;
-        }
-        if (matches < minMatches || matches / window < 0.6) continue;
-        final score = matches - 0.5 * (window - matches) - 0.1 * j;
-        if (best == null || score > best.score) {
-          best = _Alignment(i, j, window, matches, score);
-        }
-      }
-    }
+    final lo = math.max(0, rows.length - searchRows);
+    final pairs = _align(rows.sublist(lo), page, rowThreshold);
+    final ok = pairs.length >= minMatches &&
+        lo + pairs.last.$1 >= rows.length - 1 - maxSkippedBottom &&
+        pairs.first.$2 <= maxSkippedTop;
 
-    if (best == null) {
+    if (!ok) {
       joins.add(PageJoin(page: p, found: false));
       rows.addAll(page);
       pageOf.addAll(List.filled(page.length, p));
       continue;
     }
 
-    // Rows inside the overlap that disagree: one photo cut the line at its
-    // edge, so keep the longer reading.
-    for (var t = 0; t < best.window; t++) {
-      final mine = rows[best.i + t], theirs = page[best.j + t];
-      if (!_sameRow(mine, theirs, rowThreshold) && theirs.length > mine.length) {
-        rows[best.i + t] = theirs;
-        pageOf[best.i + t] = p;
+    for (final (a, b) in pairs) {
+      final i = lo + a;
+      if (_quality(page[b]) > _quality(rows[i])) {
+        rows[i] = page[b];
+        pageOf[i] = p;
       }
     }
-    final rest = page.sublist(best.j + best.window);
-    // Text left over after the window means the earlier page ended before the
-    // overlap did; nothing to add from it.
+    final lastMine = lo + pairs.last.$1, lastTheirs = pairs.last.$2;
+    rows.removeRange(lastMine + 1, rows.length);
+    pageOf.removeRange(lastMine + 1, pageOf.length);
+    final rest = page.sublist(lastTheirs + 1);
     rows.addAll(rest);
     pageOf.addAll(List.filled(rest.length, p));
     joins.add(PageJoin(
-        page: p, found: true, overlapRows: best.window, matchingRows: best.matches));
+      page: p,
+      found: true,
+      overlapRows: lastTheirs + 1,
+      matchingRows: pairs.length,
+    ));
   }
   return StitchResult(rows, pageOf, joins);
 }
 
-class _Alignment {
-  _Alignment(this.i, this.j, this.window, this.matches, this.score);
-  final int i, j, window, matches;
-  final double score;
+/// Longest common subsequence of fuzzily equal rows, as index pairs.
+List<(int, int)> _align(List<String> a, List<String> b, double threshold) {
+  final ka = [for (final r in a) _key(r)], kb = [for (final r in b) _key(r)];
+  final n = a.length, m = b.length;
+  final same = List.generate(
+      n, (i) => List.generate(m, (j) => _sameKey(ka[i], kb[j], threshold)));
+  final len = List.generate(n + 1, (_) => List.filled(m + 1, 0));
+  for (var i = n - 1; i >= 0; i--) {
+    for (var j = m - 1; j >= 0; j--) {
+      len[i][j] = same[i][j]
+          ? len[i + 1][j + 1] + 1
+          : math.max(len[i + 1][j], len[i][j + 1]);
+    }
+  }
+  final pairs = <(int, int)>[];
+  var i = 0, j = 0;
+  while (i < n && j < m) {
+    if (same[i][j] && len[i][j] == len[i + 1][j + 1] + 1) {
+      pairs.add((i, j));
+      i++;
+      j++;
+    } else if (len[i + 1][j] >= len[i][j + 1]) {
+      i++;
+    } else {
+      j++;
+    }
+  }
+  return pairs;
+}
+
+/// How complete a reading of a row looks: one ending in a price beats one
+/// without, and a price followed by its tax code beats a bare price. Equal
+/// readings keep the earlier photo's: a longer line is not a better one
+/// ("1-2  6.46 F" misread against "1-2 8.46 F").
+int _quality(String row) {
+  if (RegExp(r'\d[.,]\d{2}\s*[A-Z]\s*$').hasMatch(row)) return 2;
+  if (RegExp(r'\d[.,]\d{2}\s*$').hasMatch(row)) return 1;
+  return 0;
 }
 
 String _key(String row) => row.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
 
-bool _sameRow(String a, String b, double threshold) {
-  final ka = _key(a), kb = _key(b);
+bool _sameKey(String ka, String kb, double threshold) {
   if (ka.isEmpty || kb.isEmpty) return false;
   return ka == kb || similarity(ka, kb) >= threshold;
 }

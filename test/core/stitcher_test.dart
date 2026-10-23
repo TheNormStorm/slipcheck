@@ -106,4 +106,30 @@ void main() {
         fromOnePhoto.items.map((i) => i.quantity));
     expect(fromPhotos.storeName, 'MARKET BASKET');
   });
+
+  test('real photos: 96-item receipt in three heavily overlapping photos', () {
+    List<String> rowsOf(String name) {
+      final json = jsonDecode(File('test/fixtures/$name.json').readAsStringSync()) as List;
+      return groupIntoRows([for (final l in json) OcrLine.fromJson(l)]);
+    }
+
+    // Shuffled. They overlap by 30-60 lines, and the photos split some lines
+    // differently ("4235" / "PLANTAINS" against "4235  PLANTAINS  1.50 F").
+    final pages = [rowsOf('market_basket3_bottom'), rowsOf('market_basket3_top'),
+        rowsOf('market_basket3_middle')];
+    final order = bestPageOrder(pages);
+    expect(order, [1, 2, 0]);
+
+    final stitched = stitchPages([for (final i in order) pages[i]]);
+    expect(stitched.joins.every((j) => j.found), isTrue);
+    final r = const ReceiptParser().parse(stitched.rows);
+    expect((r.subtotalCents, r.taxCents, r.totalCents), (36133, 157, 36290));
+    expect(r.items, hasLength(64));
+    // Every line read: the items add up to the printed subtotal exactly.
+    expect(r.itemsSumCents, 36133);
+    // Where photos disagree, the better reading wins (the bottom photo read
+    // these as 6.46 and 1.55).
+    expect(r.items.where((i) => i.rawText.startsWith('93% X-LEAN')).map((i) => i.lineTotalCents),
+        [846, 755]);
+  });
 }
