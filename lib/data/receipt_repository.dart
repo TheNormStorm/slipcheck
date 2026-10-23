@@ -41,7 +41,7 @@ class ReceiptDraft {
     this.subtotalCents,
     this.taxCents,
     this.totalCents,
-    this.imagePath,
+    this.imagePaths = const [],
     this.ocrText,
     this.source = 'photo',
     this.currency = 'USD',
@@ -53,7 +53,8 @@ class ReceiptDraft {
   int? subtotalCents;
   int? taxCents;
   int? totalCents;
-  final String? imagePath;
+  /// Photos of the receipt, top first.
+  final List<String> imagePaths;
   final String? ocrText;
   final String source;
   final String currency;
@@ -137,11 +138,18 @@ class ReceiptRepository {
             subtotalCents: Value(draft.subtotalCents),
             taxCents: Value(draft.taxCents),
             totalCents: Value(draft.totalCents),
-            imagePath: Value(draft.imagePath),
+            imagePath: Value(draft.imagePaths.firstOrNull),
             ocrText: Value(draft.ocrText),
             source: draft.source,
             currency: Value(draft.currency),
           ));
+      for (final (i, path) in draft.imagePaths.indexed) {
+        await db.into(db.receiptImages).insert(ReceiptImagesCompanion.insert(
+              receiptId: receiptId,
+              position: i,
+              path: path,
+            ));
+      }
       for (final (i, line) in draft.lines.indexed) {
         final productId = line.productId ?? await _findOrCreateProduct(line.name);
         await _rememberAliases(line, productId, storeId);

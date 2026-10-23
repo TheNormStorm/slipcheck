@@ -6,20 +6,18 @@ import 'package:intl/intl.dart' show DateFormat;
 import '../core/matching/product_matcher.dart';
 import '../core/money.dart';
 import '../data/receipt_repository.dart';
+import 'scan_flow.dart';
 
 /// Testing UI: shows the parsed receipt so every field can be corrected
-/// before saving. Also used, starting empty, for manual entry.
+/// before saving. For a scan, its photos can be added, retaken or removed,
+/// which reads the receipt again. Also used, starting empty, for manual entry.
 class ReviewScreen extends StatefulWidget {
-  const ReviewScreen({
-    super.key,
-    required this.repo,
-    required this.draft,
-    required this.warnings,
-  });
+  const ReviewScreen({super.key, required this.repo, this.draft, this.session})
+      : assert(draft != null || session != null);
 
   final ReceiptRepository repo;
-  final ReceiptDraft draft;
-  final List<String> warnings;
+  final ReceiptDraft? draft;
+  final ScanSession? session;
 
   @override
   State<ReviewScreen> createState() => _ReviewScreenState();
@@ -32,13 +30,123 @@ class _ReviewScreenState extends State<ReviewScreen> {
   /// Lines whose fuzzy suggestion the user accepted.
   final _acceptedFuzzy = <DraftLine>{};
   bool _saving = false;
+  bool _reading = false;
 
-  ReceiptDraft get draft => widget.draft;
+  late ReceiptDraft _draft = widget.draft ?? widget.session!.toDraft();
+
+  /// Bumped when the draft is rebuilt from the photos, so the form fields
+  /// (which only read their initial value) are recreated.
+  int _generation = 0;
+
+  ReceiptDraft get draft => _draft;
 
   @override
   void initState() {
     super.initState();
     _loadMatching();
+  }
+
+  /// Runs a change to the photos, then rebuilds the draft from them.
+  /// Edits made so far are replaced, so photo changes come first.
+  Future<void> _changePages(Future<void> Function(ScanSession) change) async {
+    final session = widget.session!;
+    setState(() => _reading = true);
+    try {
+      await change(session);
+      setState(() {
+        _draft = session.toDraft();
+        _generation++;
+        _acceptedFuzzy.clear();
+      });
+      await _loadMatching();
+    } finally {
+      if (mounted) setState(() => _reading = false);
+    }
+  }
+
+  Future<void> _addPhotos() async {
+    final paths = await capturePages(context);
+    if (paths != null) await _changePages((s) => s.addPages(paths));
+  }
+
+  Future<void> _pageActions(int index) async {
+    final session = widget.session!;
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Image.file(File(session.pages[index].imagePath), height: 260),
+          ListTile(
+            leading: const Icon(Icons.refresh),
+            title: Text('Retake photo ${index + 1}'),
+            onTap: () => Navigator.pop(context, 'retake'),
+          ),
+          if (session.pages.length > 1)
+            ListTile(
+              leading: const Icon(Icons.delete_outline),
+              title: Text('Remove photo ${index + 1}'),
+              onTap: () => Navigator.pop(context, 'remove'),
+            ),
+        ]),
+      ),
+    );
+    if (!mounted) return;
+    if (action == 'retake') {
+      final paths = await capturePages(context, pageLimit: 1);
+      if (paths != null) await _changePages((s) => s.replacePage(index, paths.first));
+    } else if (action == 'remove') {
+      await _changePages((s) async => s.removePage(index));
+    }
+  }
+
+  Widget _photos(ScanSession session) {
+    final error = Theme.of(context).colorScheme.error;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(session.summary(), style: Theme.of(context).textTheme.titleSmall),
+        const SizedBox(height: 6),
+        SizedBox(
+          height: 120,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            children: [
+              for (final (i, page) in session.pages.indexed)
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: InkWell(
+                    onTap: _reading ? null : () => _pageActions(i),
+                    child: Column(children: [
+                      Container(
+                        decoration: BoxDecoration(
+                          border: Border.all(
+                              color: page.problem != null ? error : Colors.transparent,
+                              width: 2),
+                        ),
+                        child: Image.file(File(page.imagePath), height: 92, width: 64,
+                            fit: BoxFit.cover, cacheHeight: 200),
+                      ),
+                      Text('${i + 1}',
+                          style: TextStyle(color: page.problem != null ? error : null)),
+                    ]),
+                  ),
+                ),
+              OutlinedButton.icon(
+                onPressed: _reading ? null : _addPhotos,
+                icon: const Icon(Icons.add_a_photo),
+                label: const Text('Add photo'),
+              ),
+            ],
+          ),
+        ),
+        if (_reading) const LinearProgressIndicator(),
+        for (final note in session.notes())
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text(note, style: TextStyle(color: error)),
+          ),
+      ],
+    );
   }
 
   Future<void> _loadMatching() async {
@@ -83,21 +191,20 @@ class _ReviewScreenState extends State<ReviewScreen> {
         title: const Text('Check receipt'),
         actions: [
           TextButton(
-            onPressed: _saving || _matcher == null ? null : _save,
+            onPressed: _saving || _reading || _matcher == null ? null : _save,
             child: const Text('Save'),
           ),
         ],
       ),
       body: ListView(
+        key: ValueKey(_generation),
         padding: const EdgeInsets.all(12),
         children: [
-          for (final w in widget.warnings)
-            Text(w, style: TextStyle(color: Theme.of(context).colorScheme.error)),
-          if (draft.imagePath != null)
+          if (widget.session != null) _photos(widget.session!),
+          if (draft.ocrText != null)
             ExpansionTile(
-              title: const Text('Photo and OCR text'),
+              title: const Text('OCR text'),
               children: [
-                Image.file(File(draft.imagePath!), height: 320),
                 SelectableText(draft.ocrText ?? '',
                     style: const TextStyle(fontFamily: 'monospace', fontSize: 12)),
               ],

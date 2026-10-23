@@ -7,6 +7,7 @@ import '../data/receipt_repository.dart';
 import '../ocr/receipt_reader.dart';
 import 'products_screen.dart';
 import 'review_screen.dart';
+import 'scan_flow.dart';
 
 /// Testing UI: capture buttons and the list of saved receipts.
 class HomeScreen extends StatefulWidget {
@@ -25,35 +26,27 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _reload() => setState(() => _receipts = widget.repo.receipts());
 
-  Future<void> _scan(ImageSource source) async {
-    final picked = await ImagePicker().pickImage(source: source);
-    if (picked == null) return;
+  Future<void> _scan() async {
+    final paths = await capturePages(context);
+    if (paths != null) await _read(paths);
+  }
+
+  Future<void> _gallery() async {
+    final picked = await ImagePicker().pickMultiImage();
+    if (picked.isNotEmpty) await _read([for (final f in picked) f.path]);
+  }
+
+  /// OCRs every photo (top of the receipt first) and opens the review.
+  Future<void> _read(List<String> paths) async {
     setState(() => _busy = true);
     try {
-      final result = await widget.reader.read(picked.path);
-      final parsed = result.parsed;
-      final draft = ReceiptDraft(
-        storeName: parsed.storeName ?? '',
-        purchasedAt: parsed.date ?? DateTime.now(),
-        lines: [
-          for (final l in parsed.items)
-            DraftLine(
-              name: l.rawText,
-              quantity: l.quantity,
-              unit: l.unit,
-              unitPriceCents: l.unitPriceCents,
-              lineTotalCents: l.lineTotalCents,
-              discountCents: l.discountCents,
-            ),
-        ],
-        subtotalCents: parsed.subtotalCents,
-        taxCents: parsed.taxCents,
-        totalCents: parsed.totalCents,
-        imagePath: result.imagePath,
-        ocrText: result.rows.join('\n'),
-      );
+      final pages = [for (final path in paths) await widget.reader.readPage(path)];
       if (!mounted) return;
-      await _review(draft, parsed.warnings);
+      final saved = await Navigator.of(context).push<bool>(MaterialPageRoute(
+        builder: (_) => ReviewScreen(
+            repo: widget.repo, session: ScanSession(widget.reader, pages)),
+      ));
+      if (saved == true) _reload();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
@@ -64,19 +57,17 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Future<void> _manual() => _review(
-        ReceiptDraft(
+  Future<void> _manual() async {
+    final saved = await Navigator.of(context).push<bool>(MaterialPageRoute(
+      builder: (_) => ReviewScreen(
+        repo: widget.repo,
+        draft: ReceiptDraft(
           storeName: '',
           purchasedAt: DateTime.now(),
           lines: [DraftLine(name: '', lineTotalCents: 0)],
           source: 'manual',
         ),
-        const [],
-      );
-
-  Future<void> _review(ReceiptDraft draft, List<String> warnings) async {
-    final saved = await Navigator.of(context).push<bool>(MaterialPageRoute(
-      builder: (_) => ReviewScreen(repo: widget.repo, draft: draft, warnings: warnings),
+      ),
     ));
     if (saved == true) _reload();
   }
@@ -105,12 +96,12 @@ class _HomeScreenState extends State<HomeScreen> {
               runSpacing: 8,
               children: [
                 FilledButton.icon(
-                  onPressed: _busy ? null : () => _scan(ImageSource.camera),
-                  icon: const Icon(Icons.photo_camera),
-                  label: const Text('Camera'),
+                  onPressed: _busy ? null : _scan,
+                  icon: const Icon(Icons.document_scanner),
+                  label: const Text('Scan receipt'),
                 ),
                 OutlinedButton.icon(
-                  onPressed: _busy ? null : () => _scan(ImageSource.gallery),
+                  onPressed: _busy ? null : _gallery,
                   icon: const Icon(Icons.photo_library),
                   label: const Text('Gallery'),
                 ),
@@ -120,6 +111,13 @@ class _HomeScreenState extends State<HomeScreen> {
                   label: const Text('Manual'),
                 ),
               ],
+            ),
+          ),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16),
+            child: Text(
+              'Long receipt? Take several photos: start at the store name, '
+              'overlap each photo with the last by 2–3 lines, and finish at TOTAL.',
             ),
           ),
           if (_busy) const LinearProgressIndicator(),

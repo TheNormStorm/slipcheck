@@ -20,7 +20,8 @@ class Receipts extends Table {
   IntColumn get totalCents => integer().nullable()();
   TextColumn get currency => text().withDefault(const Constant('USD'))();
 
-  /// Local path of the receipt photo, kept so it can be re-read later.
+  /// Local path of the first receipt photo. All photos, in order, are in
+  /// [ReceiptImages]; this column predates them.
   TextColumn get imagePath => text().nullable()();
 
   /// Raw OCR rows, kept so an improved parser can re-parse old receipts.
@@ -29,6 +30,15 @@ class Receipts extends Table {
   /// 'photo' or 'manual'.
   TextColumn get source => text()();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+}
+
+/// The photos of one receipt, top of the receipt first.
+class ReceiptImages extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  IntColumn get receiptId =>
+      integer().references(Receipts, #id, onDelete: KeyAction.cascade)();
+  IntColumn get position => integer()();
+  TextColumn get path => text()();
 }
 
 /// A normalised product that price history attaches to.
@@ -71,16 +81,21 @@ class LineItems extends Table {
   IntColumn get discountCents => integer().withDefault(const Constant(0))();
 }
 
-@DriftDatabase(tables: [Stores, Receipts, Products, ProductAliases, LineItems])
+@DriftDatabase(
+    tables: [Stores, Receipts, ReceiptImages, Products, ProductAliases, LineItems])
 class AppDatabase extends _$AppDatabase {
   AppDatabase([QueryExecutor? executor])
       : super(executor ?? driftDatabase(name: 'slipcheck'));
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
+        onCreate: (m) => m.createAll(),
+        onUpgrade: (m, from, to) async {
+          if (from < 2) await m.createTable(receiptImages);
+        },
         beforeOpen: (details) async {
           await customStatement('PRAGMA foreign_keys = ON');
         },

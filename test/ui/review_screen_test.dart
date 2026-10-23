@@ -18,7 +18,7 @@ void main() {
     );
 
     await tester.pumpWidget(MaterialApp(
-      home: ReviewScreen(repo: repo, draft: draft, warnings: const []),
+      home: ReviewScreen(repo: repo, draft: draft),
     ));
     await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
     await tester.pump();

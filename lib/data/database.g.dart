@@ -559,7 +559,8 @@ class Receipt extends DataClass implements Insertable<Receipt> {
   final int? totalCents;
   final String currency;
 
-  /// Local path of the receipt photo, kept so it can be re-read later.
+  /// Local path of the first receipt photo. All photos, in order, are in
+  /// [ReceiptImages]; this column predates them.
   final String? imagePath;
 
   /// Raw OCR rows, kept so an improved parser can re-parse old receipts.
@@ -921,6 +922,307 @@ class ReceiptsCompanion extends UpdateCompanion<Receipt> {
           ..write('ocrText: $ocrText, ')
           ..write('source: $source, ')
           ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $ReceiptImagesTable extends ReceiptImages
+    with TableInfo<$ReceiptImagesTable, ReceiptImage> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $ReceiptImagesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _receiptIdMeta = const VerificationMeta(
+    'receiptId',
+  );
+  @override
+  late final GeneratedColumn<int> receiptId = GeneratedColumn<int>(
+    'receipt_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES receipts (id) ON DELETE CASCADE',
+    ),
+  );
+  static const VerificationMeta _positionMeta = const VerificationMeta(
+    'position',
+  );
+  @override
+  late final GeneratedColumn<int> position = GeneratedColumn<int>(
+    'position',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _pathMeta = const VerificationMeta('path');
+  @override
+  late final GeneratedColumn<String> path = GeneratedColumn<String>(
+    'path',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [id, receiptId, position, path];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'receipt_images';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<ReceiptImage> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('receipt_id')) {
+      context.handle(
+        _receiptIdMeta,
+        receiptId.isAcceptableOrUnknown(data['receipt_id']!, _receiptIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_receiptIdMeta);
+    }
+    if (data.containsKey('position')) {
+      context.handle(
+        _positionMeta,
+        position.isAcceptableOrUnknown(data['position']!, _positionMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_positionMeta);
+    }
+    if (data.containsKey('path')) {
+      context.handle(
+        _pathMeta,
+        path.isAcceptableOrUnknown(data['path']!, _pathMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_pathMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  ReceiptImage map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return ReceiptImage(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      receiptId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}receipt_id'],
+      )!,
+      position: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}position'],
+      )!,
+      path: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}path'],
+      )!,
+    );
+  }
+
+  @override
+  $ReceiptImagesTable createAlias(String alias) {
+    return $ReceiptImagesTable(attachedDatabase, alias);
+  }
+}
+
+class ReceiptImage extends DataClass implements Insertable<ReceiptImage> {
+  final int id;
+  final int receiptId;
+  final int position;
+  final String path;
+  const ReceiptImage({
+    required this.id,
+    required this.receiptId,
+    required this.position,
+    required this.path,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['receipt_id'] = Variable<int>(receiptId);
+    map['position'] = Variable<int>(position);
+    map['path'] = Variable<String>(path);
+    return map;
+  }
+
+  ReceiptImagesCompanion toCompanion(bool nullToAbsent) {
+    return ReceiptImagesCompanion(
+      id: Value(id),
+      receiptId: Value(receiptId),
+      position: Value(position),
+      path: Value(path),
+    );
+  }
+
+  factory ReceiptImage.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return ReceiptImage(
+      id: serializer.fromJson<int>(json['id']),
+      receiptId: serializer.fromJson<int>(json['receiptId']),
+      position: serializer.fromJson<int>(json['position']),
+      path: serializer.fromJson<String>(json['path']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'receiptId': serializer.toJson<int>(receiptId),
+      'position': serializer.toJson<int>(position),
+      'path': serializer.toJson<String>(path),
+    };
+  }
+
+  ReceiptImage copyWith({
+    int? id,
+    int? receiptId,
+    int? position,
+    String? path,
+  }) => ReceiptImage(
+    id: id ?? this.id,
+    receiptId: receiptId ?? this.receiptId,
+    position: position ?? this.position,
+    path: path ?? this.path,
+  );
+  ReceiptImage copyWithCompanion(ReceiptImagesCompanion data) {
+    return ReceiptImage(
+      id: data.id.present ? data.id.value : this.id,
+      receiptId: data.receiptId.present ? data.receiptId.value : this.receiptId,
+      position: data.position.present ? data.position.value : this.position,
+      path: data.path.present ? data.path.value : this.path,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ReceiptImage(')
+          ..write('id: $id, ')
+          ..write('receiptId: $receiptId, ')
+          ..write('position: $position, ')
+          ..write('path: $path')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, receiptId, position, path);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is ReceiptImage &&
+          other.id == this.id &&
+          other.receiptId == this.receiptId &&
+          other.position == this.position &&
+          other.path == this.path);
+}
+
+class ReceiptImagesCompanion extends UpdateCompanion<ReceiptImage> {
+  final Value<int> id;
+  final Value<int> receiptId;
+  final Value<int> position;
+  final Value<String> path;
+  const ReceiptImagesCompanion({
+    this.id = const Value.absent(),
+    this.receiptId = const Value.absent(),
+    this.position = const Value.absent(),
+    this.path = const Value.absent(),
+  });
+  ReceiptImagesCompanion.insert({
+    this.id = const Value.absent(),
+    required int receiptId,
+    required int position,
+    required String path,
+  }) : receiptId = Value(receiptId),
+       position = Value(position),
+       path = Value(path);
+  static Insertable<ReceiptImage> custom({
+    Expression<int>? id,
+    Expression<int>? receiptId,
+    Expression<int>? position,
+    Expression<String>? path,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (receiptId != null) 'receipt_id': receiptId,
+      if (position != null) 'position': position,
+      if (path != null) 'path': path,
+    });
+  }
+
+  ReceiptImagesCompanion copyWith({
+    Value<int>? id,
+    Value<int>? receiptId,
+    Value<int>? position,
+    Value<String>? path,
+  }) {
+    return ReceiptImagesCompanion(
+      id: id ?? this.id,
+      receiptId: receiptId ?? this.receiptId,
+      position: position ?? this.position,
+      path: path ?? this.path,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (receiptId.present) {
+      map['receipt_id'] = Variable<int>(receiptId.value);
+    }
+    if (position.present) {
+      map['position'] = Variable<int>(position.value);
+    }
+    if (path.present) {
+      map['path'] = Variable<String>(path.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ReceiptImagesCompanion(')
+          ..write('id: $id, ')
+          ..write('receiptId: $receiptId, ')
+          ..write('position: $position, ')
+          ..write('path: $path')
           ..write(')'))
         .toString();
   }
@@ -2280,6 +2582,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
   late final $StoresTable stores = $StoresTable(this);
   late final $ReceiptsTable receipts = $ReceiptsTable(this);
+  late final $ReceiptImagesTable receiptImages = $ReceiptImagesTable(this);
   late final $ProductsTable products = $ProductsTable(this);
   late final $ProductAliasesTable productAliases = $ProductAliasesTable(this);
   late final $LineItemsTable lineItems = $LineItemsTable(this);
@@ -2290,12 +2593,20 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   List<DatabaseSchemaEntity> get allSchemaEntities => [
     stores,
     receipts,
+    receiptImages,
     products,
     productAliases,
     lineItems,
   ];
   @override
   StreamQueryUpdateRules get streamUpdateRules => const StreamQueryUpdateRules([
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'receipts',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('receipt_images', kind: UpdateKind.delete)],
+    ),
     WritePropagation(
       on: TableUpdateQuery.onTableName(
         'receipts',
@@ -2707,6 +3018,24 @@ final class $$ReceiptsTableReferences
     );
   }
 
+  static MultiTypedResultKey<$ReceiptImagesTable, List<ReceiptImage>>
+  _receiptImagesRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+    db.receiptImages,
+    aliasName: 'receipts__id__receipt_images__receipt_id',
+  );
+
+  $$ReceiptImagesTableProcessedTableManager get receiptImagesRefs {
+    final manager = $$ReceiptImagesTableTableManager(
+      $_db,
+      $_db.receiptImages,
+    ).filter((f) => f.receiptId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_receiptImagesRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
   static MultiTypedResultKey<$LineItemsTable, List<LineItem>>
   _lineItemsRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
     db.lineItems,
@@ -2806,6 +3135,31 @@ class $$ReceiptsTableFilterComposer
           ),
     );
     return composer;
+  }
+
+  Expression<bool> receiptImagesRefs(
+    Expression<bool> Function($$ReceiptImagesTableFilterComposer f) f,
+  ) {
+    final $$ReceiptImagesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.receiptImages,
+      getReferencedColumn: (t) => t.receiptId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ReceiptImagesTableFilterComposer(
+            $db: $db,
+            $table: $db.receiptImages,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
   }
 
   Expression<bool> lineItemsRefs(
@@ -2985,6 +3339,31 @@ class $$ReceiptsTableAnnotationComposer
     return composer;
   }
 
+  Expression<T> receiptImagesRefs<T extends Object>(
+    Expression<T> Function($$ReceiptImagesTableAnnotationComposer a) f,
+  ) {
+    final $$ReceiptImagesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.receiptImages,
+      getReferencedColumn: (t) => t.receiptId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ReceiptImagesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.receiptImages,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
   Expression<T> lineItemsRefs<T extends Object>(
     Expression<T> Function($$LineItemsTableAnnotationComposer a) f,
   ) {
@@ -3024,7 +3403,11 @@ class $$ReceiptsTableTableManager
           $$ReceiptsTableUpdateCompanionBuilder,
           (Receipt, $$ReceiptsTableReferences),
           Receipt,
-          PrefetchHooks Function({bool storeId, bool lineItemsRefs})
+          PrefetchHooks Function({
+            bool storeId,
+            bool receiptImagesRefs,
+            bool lineItemsRefs,
+          })
         > {
   $$ReceiptsTableTableManager(_$AppDatabase db, $ReceiptsTable table)
     : super(
@@ -3097,66 +3480,98 @@ class $$ReceiptsTableTableManager
                 ),
               )
               .toList(),
-          prefetchHooksCallback: ({storeId = false, lineItemsRefs = false}) {
-            return PrefetchHooks(
-              db: db,
-              explicitlyWatchedTables: [if (lineItemsRefs) db.lineItems],
-              addJoins:
-                  <
-                    T extends TableManagerState<
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic
-                    >
-                  >(state) {
-                    if (storeId) {
-                      state =
-                          state.withJoin(
-                                currentTable: table,
-                                currentColumn: table.storeId,
-                                referencedTable: $$ReceiptsTableReferences
-                                    ._storeIdTable(db),
-                                referencedColumn: $$ReceiptsTableReferences
-                                    ._storeIdTable(db)
-                                    .id,
-                              )
-                              as T;
-                    }
+          prefetchHooksCallback:
+              ({
+                storeId = false,
+                receiptImagesRefs = false,
+                lineItemsRefs = false,
+              }) {
+                return PrefetchHooks(
+                  db: db,
+                  explicitlyWatchedTables: [
+                    if (receiptImagesRefs) db.receiptImages,
+                    if (lineItemsRefs) db.lineItems,
+                  ],
+                  addJoins:
+                      <
+                        T extends TableManagerState<
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic
+                        >
+                      >(state) {
+                        if (storeId) {
+                          state =
+                              state.withJoin(
+                                    currentTable: table,
+                                    currentColumn: table.storeId,
+                                    referencedTable: $$ReceiptsTableReferences
+                                        ._storeIdTable(db),
+                                    referencedColumn: $$ReceiptsTableReferences
+                                        ._storeIdTable(db)
+                                        .id,
+                                  )
+                                  as T;
+                        }
 
-                    return state;
+                        return state;
+                      },
+                  getPrefetchedDataCallback: (items) async {
+                    return [
+                      if (receiptImagesRefs)
+                        await $_getPrefetchedData<
+                          Receipt,
+                          $ReceiptsTable,
+                          ReceiptImage
+                        >(
+                          currentTable: table,
+                          referencedTable: $$ReceiptsTableReferences
+                              ._receiptImagesRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$ReceiptsTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).receiptImagesRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.receiptId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                      if (lineItemsRefs)
+                        await $_getPrefetchedData<
+                          Receipt,
+                          $ReceiptsTable,
+                          LineItem
+                        >(
+                          currentTable: table,
+                          referencedTable: $$ReceiptsTableReferences
+                              ._lineItemsRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$ReceiptsTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).lineItemsRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.receiptId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                    ];
                   },
-              getPrefetchedDataCallback: (items) async {
-                return [
-                  if (lineItemsRefs)
-                    await $_getPrefetchedData<
-                      Receipt,
-                      $ReceiptsTable,
-                      LineItem
-                    >(
-                      currentTable: table,
-                      referencedTable: $$ReceiptsTableReferences
-                          ._lineItemsRefsTable(db),
-                      managerFromTypedResult: (p0) => $$ReceiptsTableReferences(
-                        db,
-                        table,
-                        p0,
-                      ).lineItemsRefs,
-                      referencedItemsForCurrentItem: (item, referencedItems) =>
-                          referencedItems.where((e) => e.receiptId == item.id),
-                      typedResults: items,
-                    ),
-                ];
+                );
               },
-            );
-          },
         ),
       );
 }
@@ -3173,7 +3588,307 @@ typedef $$ReceiptsTableProcessedTableManager =
       $$ReceiptsTableUpdateCompanionBuilder,
       (Receipt, $$ReceiptsTableReferences),
       Receipt,
-      PrefetchHooks Function({bool storeId, bool lineItemsRefs})
+      PrefetchHooks Function({
+        bool storeId,
+        bool receiptImagesRefs,
+        bool lineItemsRefs,
+      })
+    >;
+typedef $$ReceiptImagesTableCreateCompanionBuilder =
+    ReceiptImagesCompanion Function({
+      Value<int> id,
+      required int receiptId,
+      required int position,
+      required String path,
+    });
+typedef $$ReceiptImagesTableUpdateCompanionBuilder =
+    ReceiptImagesCompanion Function({
+      Value<int> id,
+      Value<int> receiptId,
+      Value<int> position,
+      Value<String> path,
+    });
+
+final class $$ReceiptImagesTableReferences
+    extends BaseReferences<_$AppDatabase, $ReceiptImagesTable, ReceiptImage> {
+  $$ReceiptImagesTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $ReceiptsTable _receiptIdTable(_$AppDatabase db) =>
+      db.receipts.createAlias('receipt_images__receipt_id__receipts__id');
+
+  $$ReceiptsTableProcessedTableManager get receiptId {
+    final $_column = $_itemColumn<int>('receipt_id')!;
+
+    final manager = $$ReceiptsTableTableManager(
+      $_db,
+      $_db.receipts,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_receiptIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$ReceiptImagesTableFilterComposer
+    extends Composer<_$AppDatabase, $ReceiptImagesTable> {
+  $$ReceiptImagesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get position => $composableBuilder(
+    column: $table.position,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get path => $composableBuilder(
+    column: $table.path,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$ReceiptsTableFilterComposer get receiptId {
+    final $$ReceiptsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.receiptId,
+      referencedTable: $db.receipts,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ReceiptsTableFilterComposer(
+            $db: $db,
+            $table: $db.receipts,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$ReceiptImagesTableOrderingComposer
+    extends Composer<_$AppDatabase, $ReceiptImagesTable> {
+  $$ReceiptImagesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get position => $composableBuilder(
+    column: $table.position,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get path => $composableBuilder(
+    column: $table.path,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$ReceiptsTableOrderingComposer get receiptId {
+    final $$ReceiptsTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.receiptId,
+      referencedTable: $db.receipts,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ReceiptsTableOrderingComposer(
+            $db: $db,
+            $table: $db.receipts,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$ReceiptImagesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $ReceiptImagesTable> {
+  $$ReceiptImagesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<int> get position =>
+      $composableBuilder(column: $table.position, builder: (column) => column);
+
+  GeneratedColumn<String> get path =>
+      $composableBuilder(column: $table.path, builder: (column) => column);
+
+  $$ReceiptsTableAnnotationComposer get receiptId {
+    final $$ReceiptsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.receiptId,
+      referencedTable: $db.receipts,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ReceiptsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.receipts,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$ReceiptImagesTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $ReceiptImagesTable,
+          ReceiptImage,
+          $$ReceiptImagesTableFilterComposer,
+          $$ReceiptImagesTableOrderingComposer,
+          $$ReceiptImagesTableAnnotationComposer,
+          $$ReceiptImagesTableCreateCompanionBuilder,
+          $$ReceiptImagesTableUpdateCompanionBuilder,
+          (ReceiptImage, $$ReceiptImagesTableReferences),
+          ReceiptImage,
+          PrefetchHooks Function({bool receiptId})
+        > {
+  $$ReceiptImagesTableTableManager(_$AppDatabase db, $ReceiptImagesTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$ReceiptImagesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$ReceiptImagesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$ReceiptImagesTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<int> receiptId = const Value.absent(),
+                Value<int> position = const Value.absent(),
+                Value<String> path = const Value.absent(),
+              }) => ReceiptImagesCompanion(
+                id: id,
+                receiptId: receiptId,
+                position: position,
+                path: path,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required int receiptId,
+                required int position,
+                required String path,
+              }) => ReceiptImagesCompanion.insert(
+                id: id,
+                receiptId: receiptId,
+                position: position,
+                path: path,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$ReceiptImagesTable, ReceiptImage>(table),
+                  $$ReceiptImagesTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({receiptId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (receiptId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.receiptId,
+                                referencedTable: $$ReceiptImagesTableReferences
+                                    ._receiptIdTable(db),
+                                referencedColumn: $$ReceiptImagesTableReferences
+                                    ._receiptIdTable(db)
+                                    .id,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$ReceiptImagesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $ReceiptImagesTable,
+      ReceiptImage,
+      $$ReceiptImagesTableFilterComposer,
+      $$ReceiptImagesTableOrderingComposer,
+      $$ReceiptImagesTableAnnotationComposer,
+      $$ReceiptImagesTableCreateCompanionBuilder,
+      $$ReceiptImagesTableUpdateCompanionBuilder,
+      (ReceiptImage, $$ReceiptImagesTableReferences),
+      ReceiptImage,
+      PrefetchHooks Function({bool receiptId})
     >;
 typedef $$ProductsTableCreateCompanionBuilder =
     ProductsCompanion Function({
@@ -4480,6 +5195,8 @@ class $AppDatabaseManager {
       $$StoresTableTableManager(_db, _db.stores);
   $$ReceiptsTableTableManager get receipts =>
       $$ReceiptsTableTableManager(_db, _db.receipts);
+  $$ReceiptImagesTableTableManager get receiptImages =>
+      $$ReceiptImagesTableTableManager(_db, _db.receiptImages);
   $$ProductsTableTableManager get products =>
       $$ProductsTableTableManager(_db, _db.products);
   $$ProductAliasesTableTableManager get productAliases =>

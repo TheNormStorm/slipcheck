@@ -14,10 +14,11 @@ class OcrLine {
     required this.bottom,
     this.angle = 0,
     this.height,
+    this.confidence,
   });
 
   /// Builds a line from its four corners, clockwise from top-left.
-  factory OcrLine.fromCorners(String text, List<(double, double)> c) {
+  factory OcrLine.fromCorners(String text, List<(double, double)> c, {double? confidence}) {
     final xs = c.map((p) => p.$1), ys = c.map((p) => p.$2);
     final (x0, y0) = c[0];
     final (x1, y1) = c[1];
@@ -30,6 +31,7 @@ class OcrLine {
       bottom: ys.reduce(math.max),
       angle: math.atan2(y1 - y0, x1 - x0),
       height: math.sqrt(math.pow(x3 - x0, 2) + math.pow(y3 - y0, 2)),
+      confidence: confidence,
     );
   }
 
@@ -41,6 +43,7 @@ class OcrLine {
         bottom: (j['b'] as num).toDouble(),
         angle: (j['a'] as num?)?.toDouble() ?? 0,
         height: (j['h'] as num?)?.toDouble(),
+        confidence: (j['c'] as num?)?.toDouble(),
       );
 
   final String text;
@@ -48,6 +51,9 @@ class OcrLine {
 
   /// Text height measured across the line; null means use the box height.
   final double? height;
+
+  /// Recognition confidence 0..1 (ML Kit reports it on Android only).
+  final double? confidence;
 
   double get lineHeight => height ?? bottom - top;
   double get centerX => (left + right) / 2;
@@ -58,6 +64,7 @@ class OcrLine {
         'l': left.round(), 't': top.round(), 'r': right.round(), 'b': bottom.round(),
         'a': double.parse(angle.toStringAsFixed(4)),
         'h': double.parse(lineHeight.toStringAsFixed(1)),
+        if (confidence != null) 'c': double.parse(confidence!.toStringAsFixed(3)),
       };
 }
 

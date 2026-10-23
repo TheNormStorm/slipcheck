@@ -1,0 +1,111 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:google_mlkit_document_scanner/google_mlkit_document_scanner.dart';
+import 'package:image_picker/image_picker.dart';
+
+import '../data/receipt_repository.dart';
+import '../ocr/receipt_reader.dart';
+
+/// Opens Google's on-device document scanner, which finds the receipt's
+/// edges, crops, flattens and cleans up each photo. Returns the page images
+/// top first, or null if the user backed out. Falls back to the plain camera
+/// where the scanner is unavailable (no Play services).
+Future<List<String>?> capturePages(BuildContext context, {int pageLimit = 8}) async {
+  final scanner = DocumentScanner(
+    options: DocumentScannerOptions(
+      pageLimit: pageLimit,
+      mode: ScannerMode.full,
+      isGalleryImport: true,
+      documentFormats: const {DocumentFormat.jpeg},
+    ),
+  );
+  try {
+    final result = await scanner.scanDocument();
+    final images = result.images ?? const [];
+    return images.isEmpty ? null : images;
+  } on PlatformException catch (e) {
+    if (e.message == 'Operation cancelled') return null;
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Scanner unavailable, using the plain camera.')));
+    }
+    final picked = await ImagePicker().pickImage(source: ImageSource.camera);
+    return picked == null ? null : [picked.path];
+  } finally {
+    await scanner.close();
+  }
+}
+
+/// The photos behind a receipt being reviewed, so pages can be added or
+/// retaken and the receipt read again.
+class ScanSession {
+  ScanSession(this.reader, this.pages) : result = reader.combine(pages);
+
+  final ReceiptReader reader;
+  final List<PageRead> pages;
+  ReadResult result;
+
+  Future<void> addPages(List<String> paths) async {
+    for (final path in paths) {
+      pages.add(await reader.readPage(path));
+    }
+    result = reader.combine(pages);
+  }
+
+  Future<void> replacePage(int index, String path) async {
+    pages[index] = await reader.readPage(path);
+    result = reader.combine(pages);
+  }
+
+  void removePage(int index) {
+    pages.removeAt(index);
+    result = reader.combine(pages);
+  }
+
+  ReceiptDraft toDraft() {
+    final parsed = result.parsed;
+    return ReceiptDraft(
+      storeName: parsed.storeName ?? '',
+      purchasedAt: parsed.date ?? DateTime.now(),
+      lines: [
+        for (final l in parsed.items)
+          DraftLine(
+            name: l.rawText,
+            quantity: l.quantity,
+            unit: l.unit,
+            unitPriceCents: l.unitPriceCents,
+            lineTotalCents: l.lineTotalCents,
+            discountCents: l.discountCents,
+          ),
+      ],
+      subtotalCents: parsed.subtotalCents,
+      taxCents: parsed.taxCents,
+      totalCents: parsed.totalCents,
+      imagePaths: result.imagePaths,
+      ocrText: result.stitch.rows.join('\n'),
+    );
+  }
+
+  /// Things the user should look at, in plain words.
+  List<String> notes() => [
+        for (final (i, page) in pages.indexed)
+          if (page.problem != null) 'Photo ${i + 1}: ${page.problem}. Retake it?',
+        for (final join in result.stitch.joins)
+          if (!join.found)
+            'Could not find where photo ${join.page + 1} overlaps photo ${join.page}. '
+                'Check for missing or doubled lines there.',
+        for (final w in result.parsed.warnings)
+          if (w == 'No total found.')
+            'No TOTAL found. Add a photo of the bottom of the receipt.'
+          else
+            w,
+      ];
+
+  String summary() {
+    final n = pages.length;
+    final removed = result.stitch.overlapRowsRemoved;
+    return n == 1
+        ? '1 photo'
+        : '$n photos · $removed overlapping line${removed == 1 ? '' : 's'} removed';
+  }
+}

@@ -1,3 +1,4 @@
+import 'package:drift/drift.dart' show OrderingTerm;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:slipcheck/core/matching/product_matcher.dart';
@@ -74,5 +75,19 @@ void main() {
     ]));
     final list = await repo.receipts();
     expect(list.map((r) => (r.storeName, r.itemCount)).toList(), [('B', 2), ('A', 1)]);
+  });
+
+  test('all photos of a receipt are kept in order', () async {
+    final id = await repo.saveReceipt(ReceiptDraft(
+      storeName: 'A',
+      purchasedAt: DateTime(2026, 10, 22),
+      lines: [],
+      imagePaths: ['/top.jpg', '/middle.jpg', '/bottom.jpg'],
+    ));
+    final images = await (db.select(db.receiptImages)
+          ..where((i) => i.receiptId.equals(id))
+          ..orderBy([(i) => OrderingTerm.asc(i.position)]))
+        .get();
+    expect(images.map((i) => i.path), ['/top.jpg', '/middle.jpg', '/bottom.jpg']);
   });
 }
