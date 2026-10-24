@@ -64,6 +64,7 @@ void main() {
     expect(find.text('JMD'), findsOneWidget);
     expect(find.textContaining('8.78'), findsWidgets);
     expect(find.textContaining('2,858.78'), findsNothing); // never 8.78 + 2,850.00
+    expect(find.text('C&M Meats'), findsNothing); // a JMD store, not in the dollar chart's legend
     await tester.tap(find.text('JMD'));
     await tester.pump(const Duration(milliseconds: 400));
     expect(find.textContaining('2,850.00'), findsWidgets);
