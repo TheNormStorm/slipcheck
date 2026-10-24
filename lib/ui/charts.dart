@@ -4,15 +4,18 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart' show DateFormat;
 
-import '../core/money.dart';
 import '../data/receipt_repository.dart';
 import 'chart_palette.dart';
+import 'currency_scope.dart';
 
 /// Stacked bars: one per month, one segment per store.
 class MonthlySpendingChart extends StatelessWidget {
-  const MonthlySpendingChart({super.key, required this.receipts, required this.slots});
+  const MonthlySpendingChart({super.key, required this.receipts, required this.slots, required this.currency});
   final List<ReceiptSummary> receipts;
   final Map<String, int> slots;
+
+  /// The currency every one of [receipts] is in.
+  final String currency;
 
   @override
   Widget build(BuildContext context) {
@@ -86,8 +89,8 @@ class MonthlySpendingChart extends StatelessWidget {
                 final parts = byMonth[m]!;
                 return BarTooltipItem(
                   '${DateFormat.yMMM().format(m)}\n'
-                  '${[for (final s in storeOrder.where(parts.containsKey)) '$s ${formatCents(parts[s]!)}'].join('\n')}'
-                  '${parts.keys.any((s) => !slots.containsKey(s)) ? '\n${parts.entries.where((e) => !slots.containsKey(e.key)).map((e) => '${e.key} ${formatCents(e.value)}').join('\n')}' : ''}',
+                  '${[for (final s in storeOrder.where(parts.containsKey)) '$s ${money(context, parts[s]!, currency)}'].join('\n')}'
+                  '${parts.keys.any((s) => !slots.containsKey(s)) ? '\n${parts.entries.where((e) => !slots.containsKey(e.key)).map((e) => '${e.key} ${money(context, e.value, currency)}').join('\n')}' : ''}',
                   TextStyle(color: palette.surface, fontSize: 12),
                 );
               },
@@ -122,7 +125,7 @@ class MonthlySpendingChart extends StatelessWidget {
       // The same numbers as text (the lighter colours are low-contrast).
       for (final m in shown.reversed.take(3))
         Text(
-          '${DateFormat.yMMMM().format(m)}: ${formatCents(byMonth[m]!.values.fold(0, (s, v) => s + v))}',
+          '${DateFormat.yMMMM().format(m)}: ${money(context, byMonth[m]!.values.fold(0, (s, v) => s + v), currency)}',
           style: Theme.of(context).textTheme.bodySmall,
         ),
     ]);

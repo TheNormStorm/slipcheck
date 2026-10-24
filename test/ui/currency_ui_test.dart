@@ -69,6 +69,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 400));
     expect(find.textContaining('2,850.00'), findsWidgets);
     expect(find.textContaining('8.78'), findsNothing);
+    expect(find.text(r'October 2026: J$2,850.00'), findsOneWidget); // under the chart
   });
 
   testWidgets('receipts in different currencies are not compared', (tester) async {

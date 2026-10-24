@@ -141,7 +141,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> with ReloadOnChange {
                 if (receiptsInRange.isNotEmpty)
                   rise(_Card(
                     title: 'Spending by month',
-                    child: MonthlySpendingChart(receipts: receiptsInRange, slots: slots),
+                    child: MonthlySpendingChart(receipts: receiptsInRange, slots: slots, currency: shown),
                   )),
                 if (stores.isNotEmpty) rise(_StoresCard(stores: stores, slots: slots, currency: shown)),
                 if (tip != null) rise(_TipCard(text: tip)),
