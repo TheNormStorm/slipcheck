@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:material_symbols_icons/symbols.dart';
 
 import '../core/analytics/vs_usual.dart';
+import '../core/currency.dart';
 import '../core/matching/product_matcher.dart';
 import '../core/money.dart';
 import '../data/receipt_repository.dart';
@@ -129,10 +130,10 @@ class LineItemRow extends StatelessWidget {
             Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                Text(formatCents(line.netCents), style: slipText(15, 900, color: t.ink, tabular: true)),
+                Text(groupedAmount(line.netCents), style: slipText(15, 900, color: t.ink, tabular: true)),
                 if (line.discountCents > 0)
                   Text(
-                    formatCents(line.lineTotalCents),
+                    groupedAmount(line.lineTotalCents),
                     style: muted.copyWith(decoration: TextDecoration.lineThrough),
                   ),
               ],

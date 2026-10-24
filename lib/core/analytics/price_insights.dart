@@ -118,7 +118,10 @@ class StorePrices {
     required this.name,
     required this.unit,
     required this.byStore,
+    this.currency = 'USD',
   });
+
+  final String currency;
 
   final int productId;
   final String name;
@@ -137,13 +140,14 @@ class StorePrices {
 }
 
 /// Products bought at two or more stores, widest price gap first. Lines of
-/// one product on one receipt count as one purchase.
+/// one product on one receipt count as one purchase, and only prices in the
+/// same currency are compared.
 List<StorePrices> storeComparison(List<Purchase> purchases) {
-  final prices = <(int, String), Map<String, List<double>>>{};
-  final names = <(int, String), String>{};
+  final prices = <(int, String, String), Map<String, List<double>>>{};
+  final names = <(int, String, String), String>{};
   for (final p in mergeByProduct(purchases)) {
     if (p.storeName == null) continue;
-    final key = (p.productId, p.unit);
+    final key = (p.productId, p.unit, p.currency);
     names[key] = p.productName;
     prices.putIfAbsent(key, () => {}).putIfAbsent(p.storeName!, () => []).add(p.unitPrice);
   }
@@ -154,6 +158,7 @@ List<StorePrices> storeComparison(List<Purchase> purchases) {
           productId: e.key.$1,
           name: names[e.key]!,
           unit: e.key.$2,
+          currency: e.key.$3,
           byStore: {for (final s in e.value.entries) s.key: median(s.value)},
         ),
   ]..sort((a, b) => b.spread.compareTo(a.spread));

@@ -101,7 +101,12 @@ class StatTile extends StatelessWidget {
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(label, style: slipText(12, 800, color: ink ?? t.ink2)),
         const SizedBox(height: 4),
-        DefaultTextStyle.merge(style: slipText(24, 900, color: ink ?? t.ink, tabular: true), child: value),
+        // Shrinks to fit for big amounts in a narrow tile.
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.centerLeft,
+          child: DefaultTextStyle.merge(style: slipText(24, 900, color: ink ?? t.ink, tabular: true), child: value),
+        ),
         ?footer,
       ]),
     );

@@ -87,6 +87,31 @@ void main() {
       expect(r.corrections.first, contains('SCALLIONS'));
     });
 
+    test('the tax and the printed item count check out too', () {
+      // The card section, where "Number of Items 96" is printed, is not kept
+      // in Text as read; the app reads it before cutting that section.
+      final r = const ReceiptParser().parse([...fixture('market_basket3_iphone'), 'Number of Items 96']);
+      expect(r.taxCheck.agrees, isTrue);
+      expect(r.taxCheck.taxedCodes, {'T'});
+      expect(r.taxCheck.ratePercent, 6.25);
+      expect(r.printedItemCount, 96);
+      expect(r.countCheck, isTrue);
+      // "3@ 2/1-00": the deal's point read as a dash.
+      expect(r.items.firstWhere((i) => i.rawText == 'PLANTAINS').quantity, 3);
+    });
+
+    test('the tax check picks between two fixes that both add up', () {
+      // BEEF (taxed) and LAMB (untaxed) could each be 14.49; only BEEF at
+      // 14.49 makes 6.25% of the taxed lines 0.91.
+      final r = const ReceiptParser().parse([
+        'BEEF 13.49 T', '1 @ 14.49', 'LAMB 13.49 F', '1 @ 14.49', 'SALT 1.00 T',
+        'SUBTOTAL 28.98', 'MA 6.25% Sales Tax 0.97', 'TOTAL 29.95',
+      ]);
+      expect(r.items.map((i) => i.lineTotalCents), [1449, 1349, 100]);
+      expect(r.corrections, hasLength(1));
+      expect(r.taxCheck.agrees, isTrue);
+    });
+
     test('nothing changes when the receipt already adds up', () {
       final r = const ReceiptParser().parse(['BEEF 13.49 F', '1 @ 19.49', 'MILK 4.29 F', 'SUBTOTAL 17.78', 'TOTAL 17.78']);
       expect(r.items.map((i) => i.lineTotalCents), [1349, 429]);

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:slipcheck/core/currency.dart';
 import 'package:slipcheck/core/money.dart';
 import 'package:slipcheck/core/parsing/ocr_line.dart';
 import 'package:slipcheck/core/parsing/receipt_parser.dart';
@@ -11,8 +12,12 @@ import '../core/distort.dart';
 
 /// What is printed on a receipt: the truth a reading is scored against.
 class Printed {
-  const Printed(this.name, {required this.lines, required this.itemsCents, required this.totalCents});
+  const Printed(this.name,
+      {required this.lines, required this.itemsCents, required this.totalCents, required this.currency});
   final String name;
+
+  /// What the money is in.
+  final String currency;
 
   /// Item lines on the receipt (a line of 3 @ 2.99 is one line).
   final int lines;
@@ -40,9 +45,11 @@ class Reading {
 
   String get id => '${files.join('+')}${warp == null ? '' : ' / $how'}';
 
-  ParsedReceipt read() {
+  /// The receipt as read, and its rows joined across photos.
+  (ParsedReceipt, List<String>) read() {
     if (files.first.endsWith('.txt')) {
-      return const ReceiptParser().parse(File('test/fixtures/${files.single}').readAsLinesSync());
+      final rows = File('test/fixtures/${files.single}').readAsLinesSync();
+      return (const ReceiptParser().parse(rows), rows);
     }
     final pages = [
       for (final f in files)
@@ -55,15 +62,20 @@ class Reading {
           return PageRead(f, groupIntoRows(lines), null, lines: lines);
         }(),
     ];
-    return combinePages(pages, const ReceiptParser()).parsed;
+    final result = combinePages(pages, const ReceiptParser());
+    return (result.parsed, result.stitch.rows);
   }
 }
 
-const marketBasket = Printed('Market Basket, Oct 22', lines: 64, itemsCents: 36133, totalCents: 36290);
-const cmMeats = Printed('C&M Meats, Oct 24', lines: 3, itemsCents: 546000, totalCents: 546000);
-const freshMart = Printed('FreshMart (typed example)', lines: 6, itemsCents: 2370, totalCents: 2435);
-const valueStore = Printed('Value Store (typed example)', lines: 2, itemsCents: 971, totalCents: 971);
-const cornerShop = Printed('Corner shop, day-first date (typed example)', lines: 3, itemsCents: 645, totalCents: 645);
+const marketBasket =
+    Printed('Market Basket, Oct 22', lines: 64, itemsCents: 36133, totalCents: 36290, currency: 'USD');
+const cmMeats = Printed('C&M Meats, Oct 24', lines: 3, itemsCents: 546000, totalCents: 546000, currency: 'JMD');
+const freshMart =
+    Printed('FreshMart (typed example)', lines: 6, itemsCents: 2370, totalCents: 2435, currency: 'CAD');
+const valueStore =
+    Printed('Value Store (typed example)', lines: 2, itemsCents: 971, totalCents: 971, currency: 'USD');
+const cornerShop = Printed('Corner shop, day-first date (typed example)',
+    lines: 3, itemsCents: 645, totalCents: 645, currency: 'GBP');
 
 /// Every receipt reading we have. Add a line here for each new receipt that
 /// reads badly (its photos' JSON from Send reading details, or its Text as
@@ -98,9 +110,30 @@ final readings = [
 enum Grade { exact, off, unchecked }
 
 class Score {
-  Score(this.reading, this.parsed);
+  Score(this.reading, (ParsedReceipt, List<String>) read)
+      : parsed = read.$1,
+        currency = detectCurrency(read.$2);
   final Reading reading;
   final ParsedReceipt parsed;
+
+  /// The currency worked out from the receipt; null when it doesn't say
+  /// (the app then uses the store's or your usual one).
+  final String? currency;
+
+  String get currencyResult => currency == null
+      ? '– (${reading.receipt.currency} not printed)'
+      : currency == reading.receipt.currency
+          ? '✓ $currency'
+          : '✗ $currency, not ${reading.receipt.currency}';
+
+  String get checks {
+    final tax = parsed.taxCheck.agrees;
+    final count = parsed.countCheck;
+    return [
+      tax == null ? 'tax –' : 'tax ${tax ? '✓' : '✗'}',
+      count == null ? 'count –' : 'count ${count ? '✓' : '✗'}',
+    ].join(', ');
+  }
 
   int get lineGap => reading.receipt.lines - parsed.items.length;
   int get centsGap => parsed.itemsSumCents - reading.receipt.itemsCents;
@@ -140,15 +173,21 @@ void main() {
       ..writeln('Every receipt reading we have, read the way the app reads it, against what the')
       ..writeln('paper receipt says. Regenerate with `UPDATE_SCORECARD=1 flutter test test/scorecard`.')
       ..writeln()
-      ..writeln('**$exact of ${checked.length} readings exact.**')
+      ..writeln('**$exact of ${checked.length} readings exact.** Currency wrong: '
+          '${scores.where((s) => s.currency != null && s.currency != s.reading.receipt.currency).length}. '
+          'Tax or item-count check failing: ${scores.where((s) => s.parsed.taxCheck.agrees == false || s.parsed.countCheck == false).length}.')
       ..writeln()
-      ..writeln('| Receipt | How it was read | Lines read | Items come to | Printed | Result |')
-      ..writeln('|---|---|---|---|---|---|');
+      ..writeln('"Other checks": the printed tax rate of the taxed lines gives the printed tax; the')
+      ..writeln('quantities match the printed item count. "–" means the receipt (or what was kept')
+      ..writeln('of it: the card section, where some tills print the count, is cut) gives nothing to check.')
+      ..writeln()
+      ..writeln('| Receipt | How it was read | Lines read | Items come to | Printed | Result | Currency | Other checks |')
+      ..writeln('|---|---|---|---|---|---|---|---|');
     for (final s in scores) {
       final r = s.reading;
       b.writeln('| ${r.receipt.name} | ${r.how} | ${s.parsed.items.length} of ${r.receipt.lines} | '
           '${formatCents(s.parsed.itemsSumCents)} | ${formatCents(r.receipt.itemsCents)} | '
-          '${s.grade == Grade.exact ? '✓ ' : s.grade == Grade.off ? '✗ ' : ''}${s.result} |');
+          '${s.grade == Grade.exact ? '✓ ' : s.grade == Grade.off ? '✗ ' : ''}${s.result} | ${s.currencyResult} | ${s.checks} |');
     }
     return b.toString();
   }
@@ -157,7 +196,11 @@ void main() {
     final text = report();
     // ignore: avoid_print
     print(text);
-    final now = {for (final s in scores) s.reading.id: s.grade.name};
+    // Recorded per reading: the grade, the currency, and each check.
+    final now = {
+      for (final s in scores)
+        s.reading.id: '${s.grade.name} ${s.currency ?? '-'} ${s.parsed.taxCheck.agrees} ${s.parsed.countCheck}',
+    };
     if (Platform.environment['UPDATE_SCORECARD'] == '1' || !_baseline.existsSync()) {
       _baseline.writeAsStringSync('${const JsonEncoder.withIndent('  ').convert(now)}\n');
       _report.writeAsStringSync(text);
@@ -166,17 +209,31 @@ void main() {
     final before = (jsonDecode(_baseline.readAsStringSync()) as Map).cast<String, String>();
     final worse = [
       for (final s in scores)
-        if (before[s.reading.id] == Grade.exact.name && s.grade != Grade.exact)
-          '${s.reading.receipt.name}, ${s.reading.how}: ${s.result}',
+        if (_worse(before[s.reading.id], now[s.reading.id]!))
+          '${s.reading.receipt.name}, ${s.reading.how}: ${s.result}; ${s.currencyResult}; ${s.checks}',
     ];
-    expect(worse, isEmpty, reason: 'These readings were exact and no longer are.');
+    expect(worse, isEmpty, reason: 'These readings got worse.');
     final better = [
       for (final s in scores)
-        if (before[s.reading.id] != Grade.exact.name && s.grade == Grade.exact) s.reading.id,
+        if (before[s.reading.id] != now[s.reading.id] && !_worse(before[s.reading.id], now[s.reading.id]!)) s.reading.id,
     ];
     if (better.isNotEmpty) {
       // ignore: avoid_print
-      print('Now exact: ${better.join(', ')}. Run UPDATE_SCORECARD=1 flutter test test/scorecard to record it.');
+      print('Better: ${better.join(', ')}. Run UPDATE_SCORECARD=1 flutter test test/scorecard to record it.');
     }
   });
+}
+
+/// Whether a reading's record got worse: exact → not, a currency it found
+/// lost or changed, or a check that passed now failing or silent.
+bool _worse(String? before, String now) {
+  if (before == null) return false;
+  final b = before.split(' '), n = now.split(' ');
+  if (b.length != 4) return b.first == Grade.exact.name && n.first != Grade.exact.name;
+  if (b[0] == Grade.exact.name && n[0] != Grade.exact.name) return true;
+  if (b[1] != '-' && b[1] != n[1]) return true;
+  for (final i in [2, 3]) {
+    if (b[i] == 'true' && n[i] != 'true') return true;
+  }
+  return false;
 }

@@ -1,5 +1,6 @@
 import '../categories.dart';
 import '../money.dart';
+import 'checks.dart';
 import 'date_parser.dart';
 
 /// A purchased line as read from the receipt, before product matching.
@@ -29,6 +30,9 @@ class ParsedLine {
 
   /// Department heading the line was printed under ("PRODUCE DEPT").
   String? section;
+
+  /// The tax code printed after the price ("F", "T"), when read.
+  String? taxCode;
 
   int get netCents => lineTotalCents - discountCents;
 
@@ -61,6 +65,20 @@ class ParsedReceipt {
   /// Lines changed to a second reading so the receipt adds up, in words.
   final corrections = <String>[];
 
+  /// Each tax line as printed, with its rate when one is printed.
+  final taxLines = <TaxLine>[];
+
+  /// "Number of Items 96", "ITEMS SOLD 8": the count the till printed.
+  int? printedItemCount;
+
+  List<CheckLine> get checkLines => [
+        for (final i in items)
+          CheckLine(cents: i.netCents, quantity: i.quantity, unit: i.unit, taxCode: i.taxCode),
+      ];
+
+  TaxCheck get taxCheck => checkTax(checkLines, taxLines);
+  bool? get countCheck => checkCount(checkLines, printedItemCount);
+
   int get itemsSumCents => items.fold(0, (sum, i) => sum + i.netCents);
 }
 
@@ -78,7 +96,15 @@ class ReceiptParser {
   // Amount at the end of a row, optionally followed by a tax code ("H", "*",
   // "E") and a stray mark or two from the paper ("4.63 F  8").
   static final _trailingAmount = RegExp(
-      r'^(.*?)\s*(-?\$?\d{1,6}[.,]\d{2}-?)\s*(?:[A-Z*]{1,2})?(?:\s+\S{1,2})?\s*$');
+      r'^(.*?)\s*(-?\$?\d{1,6}[.,]\d{2}-?)\s*([A-Z*]{1,2})?(?:\s+\S{1,2})?\s*$');
+  // The rate on a tax line: "MA 6.25% Sales Tax", "HST 13%".
+  static final _taxRate = RegExp(r'(\d{1,2}(?:[.,]\d{1,3})?)\s*%');
+  // The till's item count: "Number of Items 96", "# ITEMS SOLD 12",
+  // "TOTAL NUMBER OF ITEMS SOLD = 12", "Item count: 5".
+  static final _itemCount = RegExp(
+      r'^\s*#?\s*(?:total\s+)?(?:number\s+of\s+items(?:\s+sold)?|no\.?\s*of\s+items|items?\s+sold|item\s+count|items)'
+      r'\s*[:=#]?\s*(\d{1,4})\s*$',
+      caseSensitive: false);
   // "6 @ 2/6.00": six bought at a 2-for-6.00 price.
   static final _multiBuyQty = RegExp(
       r'(?:^|\s)(\d{1,3})\s*@\s*(\d{1,2})\s*/\s*\$?(\d{1,5}[.,]\d{2})');
@@ -179,6 +205,8 @@ class ReceiptParser {
               // not as 850.00 and 234,56.
               .replaceAll(RegExp(r'(?<=\d),(?=\d{3}(?:,\d{3})*\.\d{2}\b)'), '')
               .replaceAll(RegExp(r'(?<=\d)\.(?=\d{3}(?:\.\d{3})*,\d{2}\b)'), '')
+              // ...or reads a deal's point as a dash: "3@ 2/1-00".
+              .replaceAllMapped(RegExp(r'([/@]\s?\$?\d{1,4})-(\d{2})\b'), (m) => '${m[1]}.${m[2]}')
               // OCR sometimes splits an amount: "0. 79", "1 .99".
               .replaceAllMapped(RegExp(r'(\d) ?([.,]) ?(\d{2})\b'),
                   (m) => '${m[1]}${m[2]}${m[3]}')
@@ -255,6 +283,16 @@ class ReceiptParser {
       return true;
     }
 
+    for (final row in cleaned) {
+      final count = _itemCount.firstMatch(row);
+      if (count != null) receipt.printedItemCount ??= int.parse(count.group(1)!);
+    }
+
+    void recordTax(String desc, int cents) {
+      final rate = _taxRate.firstMatch(desc)?.group(1);
+      receipt.taxLines.add(TaxLine(cents, ratePercent: rate == null ? null : double.parse(rate.replaceAll(',', '.'))));
+    }
+
     var rowsAfterTotal = 0;
     for (var row in cleaned) {
       if (seenTotal) {
@@ -264,6 +302,7 @@ class ReceiptParser {
         final m = _trailingAmount.firstMatch(row);
         if (m != null && _tax.hasMatch(m.group(1)!) && !_hasItemWords(m.group(1)!)) {
           receipt.taxCents = parseCents(m.group(2)!);
+          recordTax(m.group(1)!, receipt.taxCents!);
         }
         continue;
       }
@@ -308,12 +347,14 @@ class ReceiptParser {
       // A price that lost its last digit ("SCALLIONS 1.4 F"), when what
       // follows is a tax code this receipt prints after prices.
       List<int>? lostDigit;
+      var taxCode = amountMatch?.group(3);
       if (amount == null) {
         final m = _partialAmount.firstMatch(rest);
         if (m != null && taxCodes.contains(m.group(3)) && _letters.hasMatch(m.group(1)!)) {
           final tenths = parseCents('${m.group(2)}0')!;
           amount = tenths;
           desc = m.group(1)!.trim();
+          taxCode = m.group(3);
           lostDigit = [for (var d = 1; d <= 9; d++) tenths + d];
         }
       }
@@ -353,6 +394,7 @@ class ReceiptParser {
           _tax.hasMatch(desc) &&
           (desc.contains('%') || !_hasItemWords(desc))) {
         receipt.taxCents = (receipt.taxCents ?? 0) + amount;
+        recordTax(desc, amount);
         continue;
       }
       if (amount != null && amount < 0 && _return.hasMatch(desc) &&
@@ -440,7 +482,8 @@ class ReceiptParser {
       final line = ParsedLine(
           rawText: rowHasName ? _cleanName(name) : _cleanUnpricedName(name),
           lineTotalCents: amount)
-        ..code = code;
+        ..code = code
+        ..taxCode = taxCode == '*' ? null : taxCode;
       if (lostDigit != null) line.alternatives.addAll(lostDigit);
       final appliedQty = qty ?? pendingQty;
       if (appliedQty != null && appliedQty.fits(amount)) _applyQty(line, appliedQty);
@@ -464,17 +507,13 @@ class ReceiptParser {
     final open = [for (final i in r.items) if (i.alternatives.isNotEmpty) i];
     if (diff == 0 || open.isEmpty || open.length > 12) return;
 
-    List<(ParsedLine, int)>? best;
-    var found = 0;
+    // Every way to change exactly [want] of the open lines, up to a few.
+    final found = <List<(ParsedLine, int)>>[];
     var tried = 0;
-    // Every way to change exactly [want] of the open lines.
     void search(int at, int left, int want, List<(ParsedLine, int)> chosen) {
-      if (++tried > 200000 || found > 1) return;
+      if (++tried > 200000 || found.length > 20) return;
       if (chosen.length == want || at == open.length) {
-        if (chosen.length == want && left == 0) {
-          found++;
-          best ??= [...chosen];
-        }
+        if (chosen.length == want && left == 0) found.add([...chosen]);
         return;
       }
       search(at + 1, left, want, chosen);
@@ -487,12 +526,36 @@ class ReceiptParser {
       }
     }
 
-    for (var want = 1; want <= open.length && found == 0; want++) {
+    for (var want = 1; want <= open.length && found.isEmpty; want++) {
       search(0, diff, want, []);
     }
-    // None, or more than one equally small fix: leave it for the user.
-    if (found != 1) return;
-    for (final (line, alt) in best!) {
+    // The tax check picks between equally small fixes: the one fix that
+    // makes it agree wins. Otherwise a single fix is taken, unless it breaks
+    // a tax check that agreed before.
+    final taxBefore = r.taxCheck.agrees;
+    bool? taxAfter(List<(ParsedLine, int)> fix) {
+      final was = [for (final (line, _) in fix) line.lineTotalCents];
+      for (final (line, alt) in fix) {
+        line.lineTotalCents = alt;
+      }
+      final after = r.taxCheck.agrees;
+      for (final (i, (line, _)) in fix.indexed) {
+        line.lineTotalCents = was[i];
+      }
+      return after;
+    }
+
+    final agreeing = found.where((f) => taxAfter(f) == true).toList();
+    final List<List<(ParsedLine, int)>> fits;
+    if (agreeing.length == 1) {
+      fits = agreeing;
+    } else if (found.length == 1 && !(taxBefore == true && taxAfter(found.single) == false)) {
+      fits = found;
+    } else {
+      // None, or more than one equally small fix: leave it for the user.
+      return;
+    }
+    for (final (line, alt) in fits.single) {
       final lostDigit = line.alternatives.length == 9 && line.alternatives.first == line.lineTotalCents + 1;
       r.corrections.add(lostDigit
           ? '${line.rawText}: the last digit was unreadable; ${formatCents(alt)} makes the receipt add up.'

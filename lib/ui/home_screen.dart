@@ -11,6 +11,7 @@ import 'app_actions.dart';
 import 'chart_palette.dart';
 import 'components/brand.dart';
 import 'components/kit.dart';
+import 'currency_scope.dart';
 import 'motion/motion.dart';
 import 'receipt_detail_screen.dart';
 import 'receipts_screen.dart';
@@ -97,11 +98,23 @@ class _HomeScreenState extends State<HomeScreen> with ReloadOnChange {
                           ),
                           if (thisMonth.isNotEmpty)
                             CountUp(
-                              cents: thisMonth.fold(0, (s, r) => s + r.spentCents),
+                              cents: thisMonth
+                                  .where((r) => r.currency == CurrencyScope.mainOf(context))
+                                  .fold(0, (s, r) => s + r.spentCents),
                               style: slipText(20, 900, color: t.ink, tabular: true),
                             ),
                         ]),
                   ),
+                  // Other currencies are never added in: each gets its own total.
+                  if (thisMonth.isNotEmpty && thisMonth.any((r) => r.currency != CurrencyScope.mainOf(context)))
+                    Padding(
+                      padding: const EdgeInsets.only(left: 2, bottom: 8),
+                      child: Text(
+                        'Also ${totalsByCurrency(thisMonth.where((r) => r.currency != CurrencyScope.mainOf(context)), context)}',
+                        textAlign: TextAlign.right,
+                        style: slipText(13, 800, color: t.ink2, tabular: true),
+                      ),
+                    ),
                   for (final (i, r) in shown!.indexed)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 8),
