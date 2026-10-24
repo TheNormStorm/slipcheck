@@ -108,6 +108,9 @@ class ReceiptParser {
       RegExp(r'^(\d{1,2})\s*(?:[@09©®eaQ]|\s)\s*\$?(\d{1,4}[.,]\d{2})\s*/?$');
 
   static final _letters = RegExp(r'[A-Za-z]{2,}');
+  // Notes printed under an item that are not part of its name: "Manual
+  // Weight" (and OCR's "Manual #eight").
+  static final _note = RegExp(r'^\s*manual\s+\S?eight\b', caseSensitive: false);
   // A product code at the start of a name, allowing for a misread character
   // or two ("20938700901K6").
   static final _codePrefix = RegExp(r'^\d{4,}\w{0,3}\s');
@@ -182,11 +185,32 @@ class ReceiptParser {
     String? section;
     var seenTotal = false;
 
+    // A price that landed on a row with no name of its own: on a tilted
+    // photo, the next item's price can sit on the row above ("3 @ $320.00/
+    // $1,650.00"). Kept until a name and quantity line that cost exactly
+    // that come along.
+    int? strayAmount;
+
     void add(ParsedLine line, String nameAsPrinted) {
       line
         ..code ??= _codeOf(nameAsPrinted)
         ..section = section;
       receipt.items.add(line);
+      strayAmount = null;
+    }
+
+    /// Prices the pending name from the stray amount when its quantity line
+    /// costs exactly that ("SPARE RIBS" / "3 @ $550.00/" and a stray 1,650.00).
+    bool fromStray(_Qty qty) {
+      final amount = strayAmount;
+      if (amount == null || pendingNames.isEmpty || !qty.fits(amount)) return false;
+      final name = pendingNames.last;
+      final line = ParsedLine(rawText: _cleanUnpricedName(name), lineTotalCents: amount);
+      _applyQty(line, qty);
+      add(line, name);
+      pendingNames.clear();
+      pendingQty = null;
+      return true;
     }
 
     ParsedLine? lastUnquantified() {
@@ -209,7 +233,7 @@ class ReceiptParser {
     }
 
     var rowsAfterTotal = 0;
-    for (final row in cleaned) {
+    for (var row in cleaned) {
       if (seenTotal) {
         // The payment section follows the total; only a tax line printed
         // right under it is still read.
@@ -221,6 +245,17 @@ class ReceiptParser {
         continue;
       }
       if (_savingsSummary.hasMatch(row)) continue;
+      // A note under an item is dropped; a price that landed on its row is
+      // kept as a row of its own.
+      final noted = _note.firstMatch(row);
+      if (noted != null) {
+        final rest = row.substring(noted.end).trim();
+        if (_trailingAmount.firstMatch(rest)?.group(1)?.trim().isEmpty ?? false) {
+          row = rest;
+        } else {
+          continue;
+        }
+      }
 
       final first = _qtyFirst.firstMatch(row);
       if (first != null && !_codePrefix.hasMatch(row)) {
@@ -259,7 +294,7 @@ class ReceiptParser {
             // A weight line that carries the item's price, under its name.
             qty = loose;
             desc = '';
-          } else if (attachToLast(loose)) {
+          } else if (attachToLast(loose) || (amount == null && fromStray(loose))) {
             continue;
           } else if (_fromPending(pendingNames, loose) case final made?) {
             // "1 @ 2.99" read as "102.99" under a name whose price was lost.
@@ -321,7 +356,7 @@ class ReceiptParser {
           // Quantity on its own row. It describes the item above when that
           // item's total matches ("COKE 3.98" / "2 @ 1.99"), otherwise the
           // next priced row ("2 @ 1.99" / "COKE 3.98").
-          if (attachToLast(qty)) continue;
+          if (attachToLast(qty) || fromStray(qty)) continue;
           if (_fromPending(pendingNames, qty) case final made?) {
             add(made.$1, made.$2);
           } else {
@@ -351,6 +386,12 @@ class ReceiptParser {
             receipt.items.isNotEmpty &&
             receipt.items.last.lineTotalCents == amount) {
           _applyQty(receipt.items.last, qty);
+        } else if (amount > 0) {
+          // The row's quantity may still be the item above's ("3 @ $320.00/"
+          // under TURKEY NECK 960.00), with the next item's price beside it.
+          final own = qty ?? _readLooseQty(desc);
+          if (own != null) attachToLast(own);
+          strayAmount = amount;
         }
         continue;
       }

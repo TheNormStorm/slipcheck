@@ -31,6 +31,25 @@ void main() {
       expectCm(const ReceiptParser().parse(groupIntoRows([for (final l in json) OcrLine.fromJson(l)])));
     });
 
+    // A tilted photo puts SPARE RIBS' price on a row other than its name.
+    const head = ['C&M MEATS & GROCERIES', 'Date: 10/24/2026', 'Description Amount', r'MUTTON IMP $2,850.00',
+      r'3 @ $950.00/', 'Manual Weight', r'TURKEY NECK(33LBS) $960.00'];
+    const tail = [r'Sub Total $5,460.00', r'5ales Ta% $0.00', r'Total $5,460.00'];
+    final layouts = {
+      'above the name': [r'3 @ $320.00/', 'Manual Weight', r'$1,650.00', 'SPARE RIBS', r'3 @ $550.00/'],
+      'on the "Manual Weight" row above': [r'3 @ $320.00/', r'Manual Weight $1,650.00', 'SPARE RIBS', r'3 @ $550.00/'],
+      'below the name': [r'3 @ $320.00/', 'Manual Weight', 'SPARE RIBS', r'$1,650.00', r'3 @ $550.00/'],
+      "on the turkey's quantity line": [r'3 @ $320.00/ $1,650.00', 'Manual Weight', 'SPARE RIBS', r'3 @ $550.00/'],
+      'on a misread quantity line, its own read without @': [r'3e $320.00/ $1,650.00', 'Manual Weight', 'SPARE RIBS', r'3 $550.00/'],
+    };
+    for (final MapEntry(key: where, value: middle) in layouts.entries) {
+      test('the price of the last item $where', () {
+        final r = const ReceiptParser().parse([...head, ...middle, 'Manual Weight', ...tail]);
+        expect(r.items.map((i) => i.rawText), ['MUTTON IMP', 'TURKEY NECK(33LBS)', 'SPARE RIBS']);
+        expectCm(r);
+      });
+    }
+
     test('as read on a phone ("5ales Ta%")', () {
       final r = const ReceiptParser().parse(fixture('cm_meats_phone'));
       expectCm(r);
