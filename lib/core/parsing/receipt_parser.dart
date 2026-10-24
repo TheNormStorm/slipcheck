@@ -160,6 +160,9 @@ class ReceiptParser {
                       caseSensitive: false),
                   '')
               .replaceAll(RegExp(r'\s+'), ' ')
+              // OCR reads a cent's 0 as D, O or o: "1,650.0D", "4.O9".
+              .replaceAllMapped(RegExp(r'(\d[.,])([\dDOo])([\dDOo])(?![\w.,])'),
+                  (m) => m[1]! + [m[2]!, m[3]!].map((c) => RegExp(r'\d').hasMatch(c) ? c : '0').join())
               // Thousands separators: "$2,850.00" and "1.234,56" are read whole,
               // not as 850.00 and 234,56.
               .replaceAll(RegExp(r'(?<=\d),(?=\d{3}(?:,\d{3})*\.\d{2}\b)'), '')

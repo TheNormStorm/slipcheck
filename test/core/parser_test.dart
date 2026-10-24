@@ -53,6 +53,17 @@ void main() {
       });
     }
 
+    test('as read on an iPhone ("\$1,650.0D", "Manual eight", price under name)', () {
+      final r = const ReceiptParser().parse(fixture('cm_meats_iphone'));
+      expect(r.items.map((i) => i.rawText), ['MUTTON IMP', 'TURKEY NECK(33LBS)', 'SPARE RIBS']);
+      expectCm(r);
+    });
+
+    test('a misread 0 in the cents', () {
+      final r = const ReceiptParser().parse(['EGGS 4.O9', 'MILK 1.0D', 'BREAD 3.49 D', 'TOTAL 8.58']);
+      expect(r.items.map((i) => i.lineTotalCents), [409, 100, 349]);
+    });
+
     test('as read on a phone ("5ales Ta%")', () {
       final r = const ReceiptParser().parse(fixture('cm_meats_phone'));
       expectCm(r);
