@@ -164,6 +164,9 @@ class ReadPipeline {
     p.result = result;
     p.pages = [...result.pages];
     final stitch = result.stitch;
+    if (result.regrouping case final how?) {
+      p.log.add(LogLine(LogKind.stitch, 'photo at an angle: re-read with $how'));
+    }
     for (final join in stitch.joins) {
       p.log.add(join.found
           ? LogLine(LogKind.stitch, 'join ${join.page}+${join.page + 1}: ${join.matchingRows} rows agree')

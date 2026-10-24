@@ -263,7 +263,7 @@ class _MoreMenu extends StatelessWidget {
         item('backup', Symbols.cloud_upload_rounded, 'Back up', 'You pick where it goes'),
         item('restore', Symbols.settings_backup_restore_rounded, 'Restore', 'From a backup file'),
         const PopupMenuDivider(),
-        item('clear', Symbols.delete_sweep_rounded, 'Clear all receipts', "Can't be undone", danger: true),
+        item('clear', Symbols.delete_sweep_rounded, 'Clear everything', 'Receipts, items and stores', danger: true),
         PopupMenuItem(
           enabled: false,
           height: 36,

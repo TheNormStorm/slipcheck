@@ -201,18 +201,15 @@ void main() {
       ]));
     }
 
-    test('keeps what was learned unless told to forget', () async {
+    test('removes receipts, items, links and stores, but keeps settings', () async {
       await seed();
-      await repo.clearAll(forgetItems: false, deleteFiles: false);
+      await repo.markSeen('onboardingSeen');
+      await repo.clearAll(deleteFiles: false);
       expect(await repo.receipts(), isEmpty);
       expect(await db.select(db.lineItems).get(), isEmpty);
-      expect(await db.select(db.products).get(), hasLength(1));
-      expect((await repo.loadMatcher()).match('X', code: '012000171741').kind, MatchKind.barcode);
-    });
-
-    test('a full reset forgets items, links and stores', () async {
-      await seed();
-      await repo.clearAll(forgetItems: true, deleteFiles: false);
+      expect(await repo.products(), isEmpty);
+      expect((await repo.loadMatcher()).match('X', code: '012000171741').kind, MatchKind.none);
+      expect(await repo.hasSeen('onboardingSeen'), isTrue);
       expect(await db.select(db.products).get(), isEmpty);
       expect(await db.select(db.productAliases).get(), isEmpty);
       expect(await db.select(db.stores).get(), isEmpty);

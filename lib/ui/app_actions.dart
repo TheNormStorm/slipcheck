@@ -136,39 +136,25 @@ class AppActions {
   Future<void> clearAll(BuildContext context) async {
     final count = (await repo.receipts()).length;
     if (!context.mounted) return;
-    var forgetItems = false;
     final ok = await showDialog<bool>(
       context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialog) => AlertDialog(
-          title: Text('Clear all $count receipt${count == 1 ? '' : 's'}?'),
-          content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const Text('Photos and price history go too. No undo.'),
-            const SizedBox(height: 12),
-            CheckboxListTile(
-              contentPadding: EdgeInsets.zero,
-              value: forgetItems,
-              onChanged: (v) => setDialog(() => forgetItems = v ?? false),
-              title: const Text('Forget items and stores too'),
-              subtitle: const Text('Leave off to keep recognising your stuff.'),
-            ),
-          ]),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Keep')),
-            FilledButton(
-              style: FilledButton.styleFrom(backgroundColor: Theme.of(context).colorScheme.error),
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Delete all'),
-            ),
-          ],
-        ),
+      builder: (context) => AlertDialog(
+        title: Text('Clear all $count receipt${count == 1 ? '' : 's'}?'),
+        content: const Text('Items, stores, photos and price history go too. No undo.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Keep')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Theme.of(context).colorScheme.error),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete all'),
+          ),
+        ],
       ),
     );
     if (ok != true) return;
-    await repo.clearAll(forgetItems: forgetItems);
+    await repo.clearAll();
     if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(forgetItems ? 'Everything cleared.' : 'All receipts cleared.')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Everything cleared.')));
     }
   }
 }

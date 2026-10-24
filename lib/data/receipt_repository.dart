@@ -663,19 +663,17 @@ class ReceiptRepository {
     }
   }
 
-  /// Deletes every receipt, its lines and photos. With [forgetItems] it also
-  /// forgets products, learned names, links, categories and stores: a full
-  /// reset. Without, the next receipts still match what was learned.
-  Future<void> clearAll({required bool forgetItems, bool deleteFiles = true}) async {
+  /// A full reset: every receipt, its lines and photos, and the items,
+  /// learned names, links, categories and stores. App settings (onboarding
+  /// seen) stay.
+  Future<void> clearAll({bool deleteFiles = true}) async {
     await db.transaction(() async {
       await db.delete(db.lineItems).go();
       await db.delete(db.receiptImages).go();
       await db.delete(db.receipts).go();
-      if (forgetItems) {
-        await db.delete(db.productAliases).go();
-        await db.delete(db.products).go();
-        await db.delete(db.stores).go();
-      }
+      await db.delete(db.productAliases).go();
+      await db.delete(db.products).go();
+      await db.delete(db.stores).go();
     });
     if (deleteFiles) await ReceiptFiles.deleteAll();
   }
