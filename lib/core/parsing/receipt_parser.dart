@@ -103,8 +103,9 @@ class ReceiptParser {
   static final _looseWeight = RegExp(
       r'^(\d{1,3}[.,]\d{3})\s*(kg|lbs?|[1il|\]!J]{1,2}[bt])\s*\S?\s*\$?(\d{1,4}[.,]\d{2})',
       caseSensitive: false);
+  // "3 @ $950.00/" (a unit price ending in a slash, as some tills print).
   static final _looseCount =
-      RegExp(r'^(\d{1,2})\s*(?:[@09©®eaQ]|\s)\s*\$?(\d{1,4}[.,]\d{2})$');
+      RegExp(r'^(\d{1,2})\s*(?:[@09©®eaQ]|\s)\s*\$?(\d{1,4}[.,]\d{2})\s*/?$');
 
   static final _letters = RegExp(r'[A-Za-z]{2,}');
   // A product code at the start of a name, allowing for a misread character
@@ -116,7 +117,8 @@ class ReceiptParser {
       caseSensitive: false);
   static final _subtotal =
       RegExp(r'^\s*sub[\s-]*total\b', caseSensitive: false);
-  static final _tax = RegExp(r'\b(tax|gst|hst|pst|qst|vat)\b',
+  // Also "Sales Ta" and "5ales Ta%", a cut-off or misread SALES TAX.
+  static final _tax = RegExp(r'\b(tax|gst|hst|pst|qst|vat)\b|^\s*[s5]ales\s+ta\S?(?=\s|$)',
       caseSensitive: false);
   static final _discount = RegExp(
       r'\b(discount|savings?|coupon|promo|instant\s*saving|multi\s*buy|price\s*reduction)\b',
@@ -155,6 +157,10 @@ class ReceiptParser {
                       caseSensitive: false),
                   '')
               .replaceAll(RegExp(r'\s+'), ' ')
+              // Thousands separators: "$2,850.00" and "1.234,56" are read whole,
+              // not as 850.00 and 234,56.
+              .replaceAll(RegExp(r'(?<=\d),(?=\d{3}(?:,\d{3})*\.\d{2}\b)'), '')
+              .replaceAll(RegExp(r'(?<=\d)\.(?=\d{3}(?:\.\d{3})*,\d{2}\b)'), '')
               // OCR sometimes splits an amount: "0. 79", "1 .99".
               .replaceAllMapped(RegExp(r'(\d) ?([.,]) ?(\d{2})\b'),
                   (m) => '${m[1]}${m[2]}${m[3]}')

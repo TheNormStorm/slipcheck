@@ -12,6 +12,32 @@ List<String> fixture(String name) =>
     File('test/fixtures/$name.txt').readAsLinesSync();
 
 void main() {
+  group('a Jamaican receipt in dollars with thousands separators', () {
+    void expectCm(ParsedReceipt r) {
+      expect(r.storeName, 'C&M MEATS & GROCERIES');
+      expect(r.date, DateTime(2026, 10, 24));
+      expect((r.subtotalCents, r.taxCents, r.totalCents), (546000, 0, 546000));
+      expect([for (final i in r.items) (i.quantity, i.unitPriceCents, i.lineTotalCents)], [
+        (3.0, 95000, 285000),
+        (3.0, 32000, 96000),
+        (3.0, 55000, 165000),
+      ]);
+      expect(r.itemsSumCents, 546000);
+      expect(r.warnings, isEmpty);
+    }
+
+    test('as read on the emulator (curling, "3e \$320.00/", "Sales Ta")', () {
+      final json = jsonDecode(File('test/fixtures/cm_meats_mlkit.json').readAsStringSync()) as List;
+      expectCm(const ReceiptParser().parse(groupIntoRows([for (final l in json) OcrLine.fromJson(l)])));
+    });
+
+    test('as read on a phone ("5ales Ta%")', () {
+      final r = const ReceiptParser().parse(fixture('cm_meats_phone'));
+      expectCm(r);
+      expect(r.items.map((i) => i.rawText), ['MUTTON IMP', 'TURKEY NECK(33LBS)', 'SPARE RIBS']);
+    });
+  });
+
   group('money', () {
     test('parses common amount formats', () {
       expect(parseCents('4.99'), 499);
@@ -21,6 +47,14 @@ void main() {
       expect(parseCents('1.00-'), -100);
       expect(parseCents('12'), isNull);
       expect(parseCents('1.5'), isNull);
+    });
+    test('reads thousands separators, both ways round', () {
+      expect(parseCents(r'$2,850.00'), 285000);
+      expect(parseCents('123,456.78'), 12345678);
+      expect(parseCents('2.850,00'), 285000);
+      expect(parseCents('1,99'), 199);
+      expect(parseCents('2,850'), isNull);
+      expect(parseTypedCents('2,850.00'), 285000);
     });
     test('parses typed prices', () {
       expect(parseTypedCents('4'), 400);
