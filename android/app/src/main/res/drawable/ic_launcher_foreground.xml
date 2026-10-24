@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The "Scan line" mark (docs/ui-redesign-plan.md), drawn on the logo's
+     100-unit grid and scaled into the adaptive icon's 66dp safe zone. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group
+        android:scaleX="0.864"
+        android:scaleY="0.864"
+        android:translateX="10.8"
+        android:translateY="10.8">
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M32,16 H68 Q72,16 72,20 V82 L66.5,77 L61,82 L55.5,77 L50,82 L44.5,77 L39,82 L33.5,77 L28,82 V20 Q28,16 32,16 Z" />
+        <path
+            android:strokeColor="#F8B996"
+            android:strokeWidth="4.5"
+            android:strokeLineCap="round"
+            android:pathData="M38.25,29.25 H61.75 M38.25,39.25 H51.75 M38.25,49.25 H61.75 M38.25,59.25 H47.75 M58.25,59.25 H61.75" />
+        <path
+            android:fillColor="#38231D18"
+            android:pathData="M22,38 H78 V48 H22 Z" />
+        <path
+            android:strokeColor="#231D18"
+            android:strokeWidth="6"
+            android:strokeLineCap="round"
+            android:pathData="M21,49 H79" />
+    </group>
+</vector>

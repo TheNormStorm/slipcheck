@@ -208,6 +208,10 @@ class ReceiptRepository {
   ReceiptRepository(this.db);
   final AppDatabase db;
 
+  /// Fires after every committed write (save, edit, delete, link, ...), so
+  /// open screens can reload.
+  Stream<void> get changes => db.tableUpdates();
+
   /// The store [name] refers to: the same name, or one OCR read slightly
   /// differently ("MARKFT BASKET"), so one store is not split in two.
   Future<int?> findStoreId(String name) async {

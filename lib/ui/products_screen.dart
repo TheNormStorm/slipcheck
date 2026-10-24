@@ -4,6 +4,7 @@ import '../core/categories.dart';
 import '../core/money.dart';
 import '../data/receipt_repository.dart';
 import 'price_history_screen.dart';
+import 'reload_on_change.dart';
 
 /// Every item you have bought, grouped by category, most spent first.
 class ProductsScreen extends StatefulWidget {
@@ -15,8 +16,16 @@ class ProductsScreen extends StatefulWidget {
   State<ProductsScreen> createState() => _ProductsScreenState();
 }
 
-class _ProductsScreenState extends State<ProductsScreen> {
+class _ProductsScreenState extends State<ProductsScreen> with ReloadOnChange {
+  @override
+  ReceiptRepository get repo => widget.repo;
+
   late Future<List<ProductSummary>> _products = widget.repo.products();
+
+  @override
+  void reload() {
+    _products = widget.repo.products();
+  }
 
   @override
   Widget build(BuildContext context) {

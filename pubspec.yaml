@@ -17,6 +17,7 @@ dependencies:
   google_mlkit_text_recognition: ^0.17.1
   image_picker: ^1.2.4
   intl: ^0.20.3
+  material_symbols_icons: ^4.2960.0
   path: ^1.9.1
   path_provider: ^2.1.6
   share_plus: ^13.3.1
@@ -31,3 +32,14 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/fonts/Nunito-OFL.txt
+    - assets/fonts/JetBrainsMono-OFL.txt
+  fonts:
+    # Variable fonts: weights are set through FontVariation in lib/ui/theme.
+    - family: Nunito
+      fonts:
+        - asset: assets/fonts/Nunito-Variable.ttf
+    - family: JetBrainsMono
+      fonts:
+        - asset: assets/fonts/JetBrainsMono-Variable.ttf

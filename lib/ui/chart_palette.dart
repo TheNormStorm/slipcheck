@@ -1,41 +1,49 @@
 import 'package:flutter/material.dart';
 
+import 'theme/tokens.dart';
+
 /// Chart colours: the dataviz reference palette, validated for colour-vision
 /// deficiency in both modes (scripts/validate_palette.js, adjacent pairs).
 /// Three light-mode slots sit under 3:1 against the surface, so every chart
 /// that uses them also shows a legend and the values as text.
+///
+/// Orange is left out of the store colours: it is the app's accent, so an
+/// orange store would read as "selected" (docs/ui-redesign-plan.md, point 7).
+/// The seven remaining slots were re-validated in this order, both modes.
 class ChartPalette {
   ChartPalette.of(BuildContext context)
-      : dark = Theme.of(context).brightness == Brightness.dark;
+      : dark = Theme.of(context).brightness == Brightness.dark,
+        _t = SlipTokens.of(context);
 
   final bool dark;
+  final SlipTokens _t;
 
   static const _light = [
-    Color(0xff2a78d6), Color(0xffeb6834), Color(0xff1baf7a), Color(0xffeda100),
-    Color(0xffe87ba4), Color(0xff008300), Color(0xff6250d6), Color(0xffe34948),
+    Color(0xff2a78d6), Color(0xff1baf7a), Color(0xffeda100), Color(0xffe87ba4),
+    Color(0xff008300), Color(0xff6250d6), Color(0xffe34948),
   ];
   static const _dark = [
-    Color(0xff3987e5), Color(0xffd95926), Color(0xff199e70), Color(0xffc98500),
-    Color(0xffd55181), Color(0xff008300), Color(0xff9085e9), Color(0xffe66767),
+    Color(0xff3987e5), Color(0xff199e70), Color(0xffc98500), Color(0xffd55181),
+    Color(0xff008300), Color(0xff9085e9), Color(0xffe66767),
   ];
 
-  /// Categorical slot [i] in fixed order; past the eighth, a neutral "other".
-  Color series(int i) => i < 8 ? (dark ? _dark : _light)[i] : muted;
+  /// Categorical slot [i] in fixed order; past the seventh, a neutral "other".
+  Color series(int i) => i < _light.length ? (dark ? _dark : _light)[i] : muted;
 
-  Color get surface => dark ? const Color(0xff1a1a19) : const Color(0xfffcfcfb);
-  Color get ink => dark ? const Color(0xfff0efec) : const Color(0xff0b0b0b);
-  Color get secondaryInk => dark ? const Color(0xffc3c2b7) : const Color(0xff52514e);
+  Color get surface => _t.surf;
+  Color get ink => _t.ink;
+  Color get secondaryInk => _t.ink2;
   Color get muted => const Color(0xff898781);
-  Color get grid => dark ? const Color(0xff2c2c2a) : const Color(0xffe1e0d9);
-  Color get baseline => dark ? const Color(0xff383835) : const Color(0xffc3c2b7);
+  Color get grid => _t.line;
+  Color get baseline => _t.line;
 
   /// Diverging poles: spent more (red) / spent less (blue).
   Color get more => dark ? const Color(0xffe66767) : const Color(0xffe34948);
   Color get less => dark ? const Color(0xff3987e5) : const Color(0xff2a78d6);
 
   /// Text for a price that went down / up (status ink, always with an arrow).
-  Color get goodText => dark ? const Color(0xff0ca30c) : const Color(0xff006300);
-  Color get badText => const Color(0xffd03b3b);
+  Color get goodText => _t.downText;
+  Color get badText => _t.upText;
 }
 
 /// Gives each store a fixed colour slot by when it was first seen (its id),

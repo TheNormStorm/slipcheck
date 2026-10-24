@@ -11,6 +11,7 @@ import '../core/money.dart';
 import '../data/receipt_repository.dart';
 import 'chart_palette.dart';
 import 'charts.dart';
+import 'reload_on_change.dart';
 
 /// Spending by month and store, how the prices of what you buy have moved,
 /// which items changed price most, and where the same item is cheaper.
@@ -31,8 +32,16 @@ class _Data {
   final Map<int, Category> categories;
 }
 
-class _AnalyticsScreenState extends State<AnalyticsScreen> {
-  late final Future<_Data> _data = _load();
+class _AnalyticsScreenState extends State<AnalyticsScreen> with ReloadOnChange {
+  @override
+  ReceiptRepository get repo => widget.repo;
+
+  late Future<_Data> _data = _load();
+
+  @override
+  void reload() {
+    _data = _load();
+  }
 
   Future<_Data> _load() async => _Data(
         await widget.repo.receipts(),
@@ -43,7 +52,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Analytics')),
+      appBar: AppBar(title: const Text('Insights')),
       body: FutureBuilder(
         future: _data,
         builder: (context, snap) {

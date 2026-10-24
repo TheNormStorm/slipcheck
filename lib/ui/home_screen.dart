@@ -1,337 +1,274 @@
-import 'dart:io';
-
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart' show DateFormat;
-import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
-import 'package:share_plus/share_plus.dart';
+import 'package:material_symbols_icons/symbols.dart';
 
-import '../core/money.dart';
-import '../data/backup.dart';
 import '../data/receipt_repository.dart';
 import '../data/sample_data.dart';
-import '../ocr/receipt_reader.dart';
-import 'analytics_screen.dart';
-import 'products_screen.dart';
+import 'app_actions.dart';
 import 'chart_palette.dart';
+import 'components/brand.dart';
+import 'components/kit.dart';
+import 'motion/motion.dart';
 import 'receipt_detail_screen.dart';
-import 'store_screen.dart';
-import 'review_screen.dart';
-import 'scan_flow.dart';
+import 'receipts_screen.dart';
+import 'reload_on_change.dart';
+import 'theme/app_theme.dart';
+import 'theme/tokens.dart';
 
-/// Testing UI: capture buttons and the list of saved receipts.
+/// Home: the scan card and this month's receipts. (Phase 1 layout; the
+/// count-ups, price chips and mascot moments arrive in phase 2.)
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key, required this.repo, required this.reader});
-
-  final ReceiptRepository repo;
-  final ReceiptReader reader;
+  const HomeScreen({super.key, required this.actions});
+  final AppActions actions;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
-  late Future<List<ReceiptSummary>> _receipts = widget.repo.receipts();
-  late Future<List<StoreSummary>> _stores = widget.repo.stores();
-  bool _busy = false;
-  bool _byStore = false;
+class _HomeScreenState extends State<HomeScreen> with ReloadOnChange {
+  @override
+  ReceiptRepository get repo => widget.actions.repo;
 
-  void _reload() => setState(() {
-        _receipts = widget.repo.receipts();
-        _stores = widget.repo.stores();
-      });
+  late Future<(List<ReceiptSummary>, List<StoreSummary>)> _data = _load();
 
-  /// Hands a file to the share sheet; the user picks where it goes (Files,
-  /// Drive, email...). Nothing is sent anywhere otherwise.
-  Future<void> _share(File file, String title) => SharePlus.instance.share(
-        ShareParams(files: [XFile(file.path)], title: title, subject: title),
-      );
+  Future<(List<ReceiptSummary>, List<StoreSummary>)> _load() async =>
+      (await repo.receipts(), await repo.stores());
 
-  Future<void> _exportCsv() async {
-    final dir = await getTemporaryDirectory();
-    final file = File(p.join(dir.path, 'slipcheck-purchases.csv'));
-    await file.writeAsString(await widget.repo.csvExport());
-    await _share(file, 'Slipcheck purchases');
-  }
-
-  Future<void> _backup() async {
-    final file = await Backup.create(widget.repo.db);
-    await _share(file, 'Slipcheck backup');
-  }
-
-  Future<void> _restore() async {
-    final picked = await FilePicker.pickFiles(dialogTitle: 'Choose a Slipcheck backup');
-    final path = picked.firstOrNull?.path;
-    if (path == null || !mounted) return;
-    final file = File(path);
-    if (!await Backup.isBackup(file)) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('That file is not a Slipcheck backup.')));
-      }
-      return;
-    }
-    if (!mounted) return;
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Restore this backup?'),
-        content: const Text('Everything currently in Slipcheck is replaced by the backup. '
-            'Slipcheck then closes; open it again to continue.'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Restore')),
-        ],
-      ),
-    );
-    if (ok != true) return;
-    await widget.repo.db.close();
-    await Backup.restore(file);
-    // The open database connection cannot be swapped in place; a fresh start
-    // opens (and if needed upgrades) the restored file.
-    exit(0);
-  }
-
-  Future<void> _clearAll() async {
-    final count = (await widget.repo.receipts()).length;
-    if (!mounted) return;
-    var forgetItems = false;
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialog) => AlertDialog(
-          title: const Text('Clear all receipts?'),
-          content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('All $count receipt${count == 1 ? '' : 's'}, their photos and price history '
-                'will be deleted from this phone. This cannot be undone.'),
-            const SizedBox(height: 12),
-            CheckboxListTile(
-              contentPadding: EdgeInsets.zero,
-              value: forgetItems,
-              onChanged: (v) => setDialog(() => forgetItems = v ?? false),
-              title: const Text('Also forget items and stores'),
-              subtitle: const Text('Learned names, links between stores and categories. '
-                  'Leave unticked to keep recognising your items.'),
-            ),
-          ]),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-            FilledButton(
-              style: FilledButton.styleFrom(backgroundColor: Theme.of(context).colorScheme.error),
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Delete all'),
-            ),
-          ],
-        ),
-      ),
-    );
-    if (ok != true) return;
-    await widget.repo.clearAll(forgetItems: forgetItems);
-    _reload();
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(forgetItems ? 'Everything cleared.' : 'All receipts cleared.')));
-    }
-  }
-
-  Future<void> _open(Widget screen) async {
-    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => screen));
-    _reload();
-  }
-
-  Future<void> _scan() async {
-    final paths = await capturePages(context);
-    if (paths != null) await _read(paths);
-  }
-
-  Future<void> _gallery() async {
-    final picked = await ImagePicker().pickMultiImage();
-    if (picked.isNotEmpty) await _read([for (final f in picked) f.path]);
-  }
-
-  /// OCRs every photo (top of the receipt first) and opens the review.
-  Future<void> _read(List<String> paths) async {
-    setState(() => _busy = true);
-    try {
-      final pages = [for (final path in paths) await widget.reader.readPage(path)];
-      if (!mounted) return;
-      final saved = await Navigator.of(context).push<bool>(MaterialPageRoute(
-        builder: (_) => ReviewScreen(
-            repo: widget.repo, session: ScanSession(widget.reader, pages)),
-      ));
-      if (saved == true) _reload();
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Could not read receipt: $e')));
-      }
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-
-  Future<void> _manual() async {
-    final saved = await Navigator.of(context).push<bool>(MaterialPageRoute(
-      builder: (_) => ReviewScreen(
-        repo: widget.repo,
-        draft: ReceiptDraft(
-          storeName: '',
-          purchasedAt: DateTime.now(),
-          lines: [DraftLine(name: '', lineTotalCents: 0)],
-          source: 'manual',
-        ),
-      ),
-    ));
-    if (saved == true) _reload();
+  @override
+  void reload() {
+    _data = _load();
   }
 
   @override
   Widget build(BuildContext context) {
+    final t = SlipTokens.of(context);
+    final now = DateTime.now();
     return Scaffold(
-      appBar: AppBar(
-        title: GestureDetector(
-          // Debug builds only: long-press the title to load sample receipts.
-          onLongPress: kDebugMode
-              ? () async {
-                  await loadSampleReceipts(widget.repo);
-                  _reload();
-                }
-              : null,
-          child: const Text('Slipcheck'),
-        ),
-        actions: [
-          IconButton(
-            tooltip: 'Analytics',
-            icon: const Icon(Icons.insights),
-            onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-              builder: (_) => AnalyticsScreen(repo: widget.repo),
-            )),
-          ),
-          TextButton.icon(
-            icon: const Icon(Icons.show_chart),
-            label: const Text('Items'),
-            onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-              builder: (_) => ProductsScreen(repo: widget.repo),
-            )),
-          ),
-          PopupMenuButton<String>(
-            onSelected: (v) => switch (v) {
-              'csv' => _exportCsv(),
-              'backup' => _backup(),
-              'restore' => _restore(),
-              _ => _clearAll(),
-            },
-            itemBuilder: (_) => const [
-              PopupMenuItem(value: 'csv', child: Text('Export as spreadsheet (CSV)')),
-              PopupMenuItem(value: 'backup', child: Text('Back up…')),
-              PopupMenuItem(value: 'restore', child: Text('Restore from backup…')),
-              PopupMenuDivider(),
-              PopupMenuItem(value: 'clear', child: Text('Clear all receipts…')),
-            ],
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 8,
+      body: SafeArea(
+        child: FutureBuilder(
+          future: _data,
+          builder: (context, snap) {
+            final receipts = snap.data?.$1;
+            final thisMonth = receipts
+                ?.where((r) => r.purchasedAt.year == now.year && r.purchasedAt.month == now.month)
+                .toList();
+            final shown = (thisMonth == null || thisMonth.isEmpty) ? receipts?.take(5).toList() : thisMonth;
+            final palette = ChartPalette.of(context);
+            final slots = storeSlots((snap.data?.$2 ?? const <StoreSummary>[])
+                .where((s) => s.receiptCount > 0)
+                .map((s) => (s.id, s.name)));
+            return ListView(
+              padding: const EdgeInsets.fromLTRB(14, 10, 14, 24),
               children: [
-                FilledButton.icon(
-                  onPressed: _busy ? null : _scan,
-                  icon: const Icon(Icons.document_scanner),
-                  label: const Text('Scan receipt'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: _busy ? null : _gallery,
-                  icon: const Icon(Icons.photo_library),
-                  label: const Text('Gallery'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: _busy ? null : _manual,
-                  icon: const Icon(Icons.edit),
-                  label: const Text('Manual'),
-                ),
+                _Header(actions: widget.actions, onSamples: kDebugMode ? () => loadSampleReceipts(repo) : null),
+                const SizedBox(height: 14),
+                _ScanCard(actions: widget.actions),
+                const SizedBox(height: 18),
+                if (receipts == null)
+                  for (var i = 0; i < 4; i++)
+                    Padding(padding: const EdgeInsets.only(bottom: 8), child: Skeleton(height: 64, radius: t.rRow))
+                else if (receipts.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 32),
+                    child: Column(children: [
+                      const SlipMascot(width: 64, mood: SlipMood.sleepy),
+                      const SizedBox(height: 12),
+                      Text('Nothing here yet', style: slipText(17, 900, color: t.ink)),
+                      Text("Scan your first receipt. Slip's hungry.", style: slipText(13, 600, color: t.ink2)),
+                    ]),
+                  )
+                else ...[
+                  Padding(
+                    padding: const EdgeInsets.only(left: 2, bottom: 8),
+                    child: Text(
+                      thisMonth!.isEmpty ? 'Latest receipts' : '${DateFormat.MMMM().format(now)} so far',
+                      style: slipText(13, 800, color: t.ink2),
+                    ),
+                  ),
+                  for (final (i, r) in shown!.indexed)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Rise(
+                        index: i,
+                        child: ReceiptCard(
+                          receipt: r,
+                          color: palette.series(slots[r.storeName] ?? 8),
+                          onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                            builder: (_) => ReceiptDetailScreen(repo: repo, receiptId: r.id),
+                          )),
+                        ),
+                      ),
+                    ),
+                ],
               ],
-            ),
-          ),
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 16),
-            child: Text(
-              'Long receipt? Take several photos: start at the store name, '
-              'overlap each photo with the last by 2–3 lines, and finish at TOTAL.',
-            ),
-          ),
-          if (_busy) const LinearProgressIndicator(),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-            child: SegmentedButton<bool>(
-              segments: const [
-                ButtonSegment(value: false, label: Text('By date'), icon: Icon(Icons.receipt_long)),
-                ButtonSegment(value: true, label: Text('By store'), icon: Icon(Icons.store)),
-              ],
-              selected: {_byStore},
-              onSelectionChanged: (v) => setState(() => _byStore = v.single),
-            ),
-          ),
-          Expanded(child: _byStore ? _storeList() : _receiptList()),
-        ],
+            );
+          },
+        ),
       ),
     );
   }
+}
 
-  Widget _receiptList() => FutureBuilder(
-        future: _receipts,
-        builder: (context, snap) {
-          final receipts = snap.data ?? const [];
-          if (receipts.isEmpty) return const Center(child: Text('No receipts yet.'));
-          return ListView.builder(
-            itemCount: receipts.length,
-            itemBuilder: (context, i) {
-              final r = receipts[i];
-              return ListTile(
-                title: Text(r.storeName ?? 'Unknown store'),
-                subtitle: Text('${DateFormat.yMMMd().format(r.purchasedAt)} · ${r.itemCount} item${r.itemCount == 1 ? '' : 's'}'),
-                trailing: Text(formatCents(r.spentCents)),
-                onTap: () => _open(ReceiptDetailScreen(repo: widget.repo, receiptId: r.id)),
-              );
-            },
-          );
-        },
-      );
+class _Header extends StatelessWidget {
+  const _Header({required this.actions, this.onSamples});
+  final AppActions actions;
+  final VoidCallback? onSamples;
 
-  Widget _storeList() => FutureBuilder(
-        future: _stores,
-        builder: (context, snap) {
-          final stores = (snap.data ?? const <StoreSummary>[])
-              .where((s) => s.receiptCount > 0)
-              .toList();
-          if (stores.isEmpty) return const Center(child: Text('No receipts yet.'));
-          final palette = ChartPalette.of(context);
-          final slots = storeSlots(stores.map((s) => (s.id, s.name)));
-          return ListView.builder(
-            itemCount: stores.length,
-            itemBuilder: (context, i) {
-              final s = stores[i];
-              return ListTile(
-                leading: CircleAvatar(
-                  backgroundColor: palette.series(slots[s.name] ?? 8),
-                  foregroundColor: Colors.white,
-                  child: Text(s.name.characters.first.toUpperCase()),
+  @override
+  Widget build(BuildContext context) {
+    final t = SlipTokens.of(context);
+    return Row(children: [
+      Expanded(
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(DateFormat('EEEE, MMM d').format(DateTime.now()), style: slipText(13, 700, color: t.ink2)),
+          const SizedBox(height: 2),
+          GestureDetector(
+            // Debug builds only: long-press the title to load sample receipts.
+            onLongPress: onSamples,
+            child: Row(children: [
+              const LogoMark(size: 32, dark: false),
+              const SizedBox(width: 8),
+              Text('Slipcheck', style: slipText(28, 900, color: t.ink, letterSpacing: -.5)),
+            ]),
+          ),
+        ]),
+      ),
+      _MoreMenu(actions: actions),
+    ]);
+  }
+}
+
+/// The ⋮ menu: export, back up, restore, clear all.
+class _MoreMenu extends StatelessWidget {
+  const _MoreMenu({required this.actions});
+  final AppActions actions;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = SlipTokens.of(context);
+    PopupMenuItem<String> item(String value, IconData icon, String title, String sub, {bool danger = false}) =>
+        PopupMenuItem(
+          value: value,
+          child: Row(children: [
+            SlipIcon(icon, size: 20, color: danger ? t.upText : t.ink),
+            const SizedBox(width: 12),
+            Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(title, style: slipText(14, 800, color: danger ? t.upText : t.ink)),
+              Text(sub, style: slipText(11.5, 600, color: t.ink2)),
+            ]),
+          ]),
+        );
+    return PopupMenuButton<String>(
+      tooltip: 'More',
+      position: PopupMenuPosition.under,
+      onSelected: (v) => switch (v) {
+        'csv' => actions.exportCsv(),
+        'backup' => actions.backup(),
+        'restore' => actions.restore(context),
+        _ => actions.clearAll(context),
+      },
+      itemBuilder: (_) => [
+        item('csv', Symbols.table_view_rounded, 'Export spreadsheet', 'CSV of every line'),
+        item('backup', Symbols.cloud_upload_rounded, 'Back up', 'You pick where it goes'),
+        item('restore', Symbols.settings_backup_restore_rounded, 'Restore', 'From a backup file'),
+        const PopupMenuDivider(),
+        item('clear', Symbols.delete_sweep_rounded, 'Clear all receipts', "Can't be undone", danger: true),
+        PopupMenuItem(
+          enabled: false,
+          height: 36,
+          child: Row(children: [
+            SlipIcon(Symbols.lock_rounded, size: 16, color: t.downText),
+            const SizedBox(width: 8),
+            Text('Everything stays on this phone.', style: slipText(12, 700, color: t.ink2)),
+          ]),
+        ),
+      ],
+      child: IgnorePointer(
+        child: CircleAction(icon: Symbols.more_horiz_rounded, onTap: () {}, tooltip: 'More'),
+      ),
+    );
+  }
+}
+
+/// "Got a receipt? Let's read it." with Scan, Gallery and Type it.
+class _ScanCard extends StatelessWidget {
+  const _ScanCard({required this.actions});
+  final AppActions actions;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = SlipTokens.of(context);
+    final heroBtn = t.punchy ? t.accInk : Colors.white;
+    final heroBtnInk = t.punchy ? t.acc : t.accDeep;
+    final chip = t.punchy ? const Color(0x2E1A0E06) : const Color(0x38FFFFFF);
+    return Stack(clipBehavior: Clip.none, children: [
+      HeroCard(
+        child: ValueListenableBuilder(
+          valueListenable: actions.busy,
+          builder: (context, busy, _) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Padding(
+              padding: const EdgeInsets.only(right: 56),
+              child: Text("Got a receipt? Let's read it.",
+                  style: slipText(22, 900, color: t.punchy ? t.accInk : Colors.white, height: 1.15)),
+            ),
+            const SizedBox(height: 14),
+            PulseRing(
+              color: heroBtn,
+              radius: t.punchy ? 12 : 999,
+              child: SizedBox(
+                height: 58,
+                child: FilledButton.icon(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: heroBtn,
+                    foregroundColor: heroBtnInk,
+                    textStyle: slipText(18, 900),
+                  ),
+                  onPressed: busy ? null : () => actions.scan(context),
+                  icon: busy
+                      ? SizedBox.square(
+                          dimension: 22, child: CircularProgressIndicator(strokeWidth: 3, color: heroBtnInk))
+                      : const SlipIcon(Symbols.document_scanner_rounded, size: 26),
+                  label: Text(busy ? 'Reading…' : 'Scan receipt'),
                 ),
-                title: Text(s.name),
-                subtitle: Text('${s.receiptCount} receipt${s.receiptCount == 1 ? '' : 's'}'
-                    '${s.lastVisit == null ? '' : ' · last ${DateFormat.yMMMd().format(s.lastVisit!)}'}'),
-                trailing: Text(formatCents(s.spentCents)),
-                onTap: () => _open(StoreScreen(repo: widget.repo, storeId: s.id)),
-              );
-            },
-          );
-        },
-      );
+              ),
+            ),
+            const SizedBox(height: 10),
+            Row(children: [
+              for (final (i, (icon, label, onTap)) in [
+                (Symbols.photo_library_rounded, 'Gallery', () => actions.gallery(context)),
+                (Symbols.edit_rounded, 'Type it', () => actions.typeIt(context)),
+              ].indexed) ...[
+                if (i > 0) const SizedBox(width: 8),
+                Expanded(
+                  child: SizedBox(
+                    height: 40,
+                    child: FilledButton.icon(
+                      style: FilledButton.styleFrom(
+                        backgroundColor: chip,
+                        foregroundColor: t.punchy ? t.accInk : Colors.white,
+                        textStyle: slipText(14, 800),
+                        minimumSize: const Size(0, 40),
+                      ),
+                      onPressed: busy ? null : onTap,
+                      icon: SlipIcon(icon, size: 18),
+                      label: Text(label),
+                    ),
+                  ),
+                ),
+              ],
+            ]),
+            const SizedBox(height: 10),
+            Text('Long one? Overlap photos by 2–3 lines.',
+                style: slipText(13, 700, color: t.onAccSmall)),
+          ]),
+        ),
+      ),
+      const Positioned(
+        right: 18,
+        top: -14,
+        child: Bob(amplitude: 3, period: 2600, angle: .06, child: SlipMascot(width: 40)),
+      ),
+    ]);
+  }
 }
