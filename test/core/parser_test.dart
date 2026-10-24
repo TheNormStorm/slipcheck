@@ -41,6 +41,9 @@ void main() {
       'below the name': [r'3 @ $320.00/', 'Manual Weight', 'SPARE RIBS', r'$1,650.00', r'3 @ $550.00/'],
       "on the turkey's quantity line": [r'3 @ $320.00/ $1,650.00', 'Manual Weight', 'SPARE RIBS', r'3 @ $550.00/'],
       'on a misread quantity line, its own read without @': [r'3e $320.00/ $1,650.00', 'Manual Weight', 'SPARE RIBS', r'3 $550.00/'],
+      'with the note above, name and price on one row': [r'3 @ $320.00/', r'Manual Weight SPARE RIBS $1,650.00', r'3 @ $550.00/'],
+      'on the note row, name on its quantity row': [r'3 @ $320.00/', r'Manual Weight $1,650.00', r'SPARE RIBS 3 @ $550.00/'],
+      'on a row of its own, name on its quantity row': [r'3 @ $320.00/', 'Manual Weight', r'$1,650.00', r'SPARE RIBS 3 @ $550.00/'],
     };
     for (final MapEntry(key: where, value: middle) in layouts.entries) {
       test('the price of the last item $where', () {

@@ -245,16 +245,12 @@ class ReceiptParser {
         continue;
       }
       if (_savingsSummary.hasMatch(row)) continue;
-      // A note under an item is dropped; a price that landed on its row is
-      // kept as a row of its own.
+      // A note under an item is dropped; whatever OCR put on the same row
+      // (the next item's name or price) is read as usual.
       final noted = _note.firstMatch(row);
       if (noted != null) {
-        final rest = row.substring(noted.end).trim();
-        if (_trailingAmount.firstMatch(rest)?.group(1)?.trim().isEmpty ?? false) {
-          row = rest;
-        } else {
-          continue;
-        }
+        row = row.substring(noted.end).trim();
+        if (row.isEmpty) continue;
       }
 
       final first = _qtyFirst.firstMatch(row);
@@ -356,7 +352,11 @@ class ReceiptParser {
           // Quantity on its own row. It describes the item above when that
           // item's total matches ("COKE 3.98" / "2 @ 1.99"), otherwise the
           // next priced row ("2 @ 1.99" / "COKE 3.98").
-          if (attachToLast(qty) || fromStray(qty)) continue;
+          if (attachToLast(qty)) continue;
+          // "SPARE RIBS 3 @ $550.00/": a name on the quantity's own row.
+          final named = desc.replaceAll(RegExp(r'[\s/]+$'), '');
+          if (_letters.hasMatch(named) && !isDepartmentHeading(named)) pendingNames.add(named);
+          if (fromStray(qty)) continue;
           if (_fromPending(pendingNames, qty) case final made?) {
             add(made.$1, made.$2);
           } else {
