@@ -100,10 +100,11 @@ class ReceiptParser {
   // The rate on a tax line: "MA 6.25% Sales Tax", "HST 13%".
   static final _taxRate = RegExp(r'(\d{1,2}(?:[.,]\d{1,3})?)\s*%');
   // The till's item count: "Number of Items 96", "# ITEMS SOLD 12",
-  // "TOTAL NUMBER OF ITEMS SOLD = 12", "Item count: 5".
+  // "TOTAL NUMBER OF ITEMS SOLD = 12", "Item count: 5". OCR misreads the
+  // words ("Numben of Items", "No. of ltems"), so letters are loose.
   static final _itemCount = RegExp(
-      r'^\s*#?\s*(?:total\s+)?(?:number\s+of\s+items(?:\s+sold)?|no\.?\s*of\s+items|items?\s+sold|item\s+count|items)'
-      r'\s*[:=#]?\s*(\d{1,4})\s*$',
+      r'^\s*#?\s*(?:total\s+)?(?:nu\w{2,4}\s+of\s+[il1|!]tems?(?:\s+sold)?|no\.?\s*of\s+[il1|!]tems?|[il1|!]tems?\s+sold|'
+      r'[il1|!]tem\s+count|[il1|!]tems)\s*[:=#]?\s*(\d{1,4})\s*$',
       caseSensitive: false);
   // "6 @ 2/6.00": six bought at a 2-for-6.00 price.
   static final _multiBuyQty = RegExp(

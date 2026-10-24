@@ -270,11 +270,12 @@ class _ItemRow extends StatelessWidget {
           ),
           if (tr != null) Sparkline(values: tr.recent, trend: dir),
           const SizedBox(width: 12),
-          SizedBox(
-            width: 58,
+          // At least 58 wide so prices line up; wider for a symbol ("J$950.00").
+          ConstrainedBox(
+            constraints: const BoxConstraints(minWidth: 58),
             child: Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
               Text(price == null ? '—' : money(context, price, tr?.currency ?? CurrencyScope.mainOf(context)),
-                  style: slipText(14.5, 900, color: t.ink, tabular: true)),
+                  maxLines: 1, softWrap: false, style: slipText(14.5, 900, color: t.ink, tabular: true)),
               if (change.isNotEmpty) Text(change, style: slipText(11.5, 900, color: changeColor, tabular: true)),
             ]),
           ),

@@ -891,7 +891,7 @@ class _TotalsRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = SlipTokens.of(context);
-    String v(int? c) => c == null ? '—' : formatCents(c);
+    String v(int? c) => c == null ? '—' : groupedAmount(c);
     return SlipCard(
       radius: t.rRow,
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),

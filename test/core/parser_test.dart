@@ -100,6 +100,15 @@ void main() {
       expect(r.items.firstWhere((i) => i.rawText == 'PLANTAINS').quantity, 3);
     });
 
+    test('the item count as OCR misreads it', () {
+      for (final row in ['Numben of Items  96', 'Number of ltems 96', 'No. of Items: 96', '# ITEMS SOLD 96',
+          'TOTAL NUMBER OF ITEMS SOLD = 96', 'Item count: 96']) {
+        expect(const ReceiptParser().parse(['MILK 4.29', 'TOTAL 4.29', row]).printedItemCount, 96, reason: row);
+      }
+      // Not a count: a price, or an item that happens to say "items".
+      expect(const ReceiptParser().parse(['ITEMS 4.99', 'TOTAL 4.99']).printedItemCount, isNull);
+    });
+
     test('the tax check picks between two fixes that both add up', () {
       // BEEF (taxed) and LAMB (untaxed) could each be 14.49; only BEEF at
       // 14.49 makes 6.25% of the taxed lines 0.91.
