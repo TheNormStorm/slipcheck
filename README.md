@@ -4,7 +4,9 @@ Photograph a shopping receipt; Slipcheck reads it on the phone, lets you correct
 and stores every purchase so you can track an item's price over time and across stores.
 
 Everything stays on the device: OCR is Google ML Kit's bundled (offline) text
-recogniser, parsing is plain Dart, storage is SQLite (drift). No accounts, no network.
+recogniser, parsing is plain Dart, storage is SQLite (drift). No accounts. The only
+network call is "Check for updates" in the menu, when you tap it: it asks GitHub for
+the latest release and sends nothing about your receipts.
 Capture uses ML Kit's document scanner (crop, flatten, clean-up, several pages),
 which Google Play services downloads once on first use; images never leave the phone.
 
