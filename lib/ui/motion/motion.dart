@@ -165,11 +165,16 @@ class CountUp extends StatelessWidget {
   Widget build(BuildContext context) {
     final s = style.copyWith(fontFeatures: const [FontFeature.tabularFigures()]);
     if (Motion.reduced(context)) return Text(_format(cents), style: s);
-    return TweenAnimationBuilder<double>(
-      tween: Tween(end: cents.toDouble()),
-      duration: Duration(milliseconds: ms),
-      curve: Motion.easeOutCubic,
-      builder: (context, v, _) => Text(_format(v.round()), style: s),
+    // Screen readers hear the final figure, not the numbers rolling past.
+    return Semantics(
+      label: _format(cents),
+      excludeSemantics: true,
+      child: TweenAnimationBuilder<double>(
+        tween: Tween(end: cents.toDouble()),
+        duration: Duration(milliseconds: ms),
+        curve: Motion.easeOutCubic,
+        builder: (context, v, _) => Text(_format(v.round()), style: s),
+      ),
     );
   }
 }
@@ -188,11 +193,15 @@ class CountUpNumber extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (Motion.reduced(context)) return Text(_format(value), style: style);
-    return TweenAnimationBuilder<double>(
-      tween: Tween(begin: 0, end: value),
-      duration: Duration(milliseconds: ms),
-      curve: Motion.easeOutCubic,
-      builder: (context, v, _) => Text(_format(v), style: style),
+    return Semantics(
+      label: _format(value),
+      excludeSemantics: true,
+      child: TweenAnimationBuilder<double>(
+        tween: Tween(begin: 0, end: value),
+        duration: Duration(milliseconds: ms),
+        curve: Motion.easeOutCubic,
+        builder: (context, v, _) => Text(_format(v), style: style),
+      ),
     );
   }
 }

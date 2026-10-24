@@ -72,13 +72,16 @@ void main() {
   });
 
   testWidgets('analytics shows spending, index and store comparison', (tester) async {
-    await pump(tester, AnalyticsScreen(repo: repo));
+    await pump(tester, AnalyticsScreen(repo: repo, now: DateTime(2026, 10, 24)));
     expect(find.text('Spending by month'), findsOneWidget);
     expect(find.text('Your price index'), findsOneWidget);
     // Whole Foods milk 5.29 vs 4.69, eggs 2.99 vs 2.99: geometric mean 1.062,
     // so Market Basket is 1 - 1/1.062 = 5.8% cheaper (not 6.2%).
     expect(find.textContaining('Market Basket is 6% cheaper than Whole Foods on the 2 items'),
         findsOneWidget);
-    expect(find.text('MILK 2% 1L'), findsWidgets);
+    expect(find.text('Milk 2% 1L'), findsWidgets);
+    // Milk is cheaper at Market Basket; eggs cost the same at both.
+    expect(find.text('Market Basket beat Whole Foods on 1 of 2 shared items.'), findsOneWidget);
+    expect(find.text('By category'), findsOneWidget);
   });
 }

@@ -7,6 +7,7 @@ String plural(int n, String word) => '$n $word${n == 1 ? '' : 's'}';
 String sentenceCase(String name) {
   final t = name.trim();
   if (t.isEmpty || t != t.toUpperCase()) return t;
-  final lower = t.toLowerCase();
+  // Litres keep their capital L ("1L", "2.5 L"); other units read fine lower.
+  final lower = t.toLowerCase().replaceAllMapped(RegExp(r'(\d\s?)l\b'), (m) => '${m[1]}L');
   return lower[0].toUpperCase() + lower.substring(1);
 }

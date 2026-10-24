@@ -62,7 +62,7 @@ void main() {
 
       await tester.tap(find.bySemanticsLabel('Items'));
       await settle(tester);
-      expect(find.text('MILK 2% 1GAL'), findsOneWidget);
+      expect(find.text('Milk 2% 1gal'), findsOneWidget);
     });
   }
 

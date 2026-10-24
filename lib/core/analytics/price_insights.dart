@@ -136,11 +136,12 @@ class StorePrices {
   double get spread => dearest.value / cheapest.value - 1;
 }
 
-/// Products bought at two or more stores, widest price gap first.
+/// Products bought at two or more stores, widest price gap first. Lines of
+/// one product on one receipt count as one purchase.
 List<StorePrices> storeComparison(List<Purchase> purchases) {
   final prices = <(int, String), Map<String, List<double>>>{};
   final names = <(int, String), String>{};
-  for (final p in purchases) {
+  for (final p in mergeByProduct(purchases)) {
     if (p.storeName == null) continue;
     final key = (p.productId, p.unit);
     names[key] = p.productName;

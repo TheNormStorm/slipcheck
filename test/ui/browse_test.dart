@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:slipcheck/data/database.dart';
 import 'package:slipcheck/data/receipt_repository.dart';
+import 'package:slipcheck/ui/price_history_screen.dart';
+import 'package:slipcheck/ui/products_screen.dart';
 import 'package:slipcheck/ui/receipt_detail_screen.dart';
 import 'package:slipcheck/ui/receipts_screen.dart';
 import 'package:slipcheck/ui/store_screen.dart';
@@ -104,5 +106,39 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
     expect(find.text('Compare these two'), findsOneWidget);
     expect(find.textContaining('↑ 5%'), findsOneWidget);
+  });
+
+  testWidgets('items: search, and filter to what went up', (tester) async {
+    await pump(tester, ProductsScreen(repo: repo));
+    expect(find.text('Milk 2% 1gal'), findsOneWidget);
+    expect(find.text('Bread'), findsOneWidget);
+    expect(find.text('+5%'), findsOneWidget); // milk 4.09 → 4.29
+    expect(find.text('same'), findsOneWidget); // bread
+
+    await tester.tap(find.text('Went up'));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.text('Milk 2% 1gal'), findsOneWidget);
+    expect(find.text('Bread'), findsNothing);
+
+    await tester.tap(find.text('All'));
+    await tester.enterText(find.byType(TextField), 'stea');
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.text('Prime shaved steak'), findsOneWidget);
+    expect(find.text('Milk 2% 1gal'), findsNothing);
+  });
+
+  testWidgets('price history: names read, usual price per store, and a link suggestion', (tester) async {
+    await tester.runAsync(() => repo.saveReceipt(ReceiptDraft(
+          storeName: 'Whole Foods',
+          purchasedAt: DateTime(2026, 10, 21),
+          lines: [DraftLine(name: 'MILK 2% 1 GAL', lineTotalCents: 494)],
+          taxCents: 0,
+        )));
+    final milk = (await tester.runAsync(repo.products))!.firstWhere((p) => p.displayName == 'MILK 2% 1GAL');
+    await pump(tester, PriceHistoryScreen(repo: repo, product: milk));
+    expect(find.text('Milk 2% 1gal'), findsOneWidget);
+    expect(find.text('↑ 5% since Sep'), findsOneWidget);
+    expect(find.text('usual'), findsOneWidget); // one store so far
+    expect(find.textContaining('Same as Milk 2% 1 gal at Whole Foods?'), findsOneWidget);
   });
 }

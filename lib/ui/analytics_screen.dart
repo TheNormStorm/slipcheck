@@ -1,23 +1,34 @@
 import 'dart:math' as math;
 
-import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart' show DateFormat;
+import 'package:material_symbols_icons/symbols.dart';
 
+import '../core/analytics/insights.dart';
 import '../core/analytics/price_insights.dart';
 import '../core/analytics/purchase.dart';
 import '../core/categories.dart';
 import '../core/money.dart';
+import '../core/text.dart';
 import '../data/receipt_repository.dart';
 import 'chart_palette.dart';
 import 'charts.dart';
+import 'components/brand.dart';
+import 'components/kit.dart';
+import 'motion/motion.dart';
 import 'reload_on_change.dart';
+import 'theme/app_theme.dart';
+import 'theme/tokens.dart';
 
-/// Spending by month and store, how the prices of what you buy have moved,
-/// which items changed price most, and where the same item is cheaper.
+/// Insights over a time span: how the prices of what you buy moved, the
+/// biggest moves, spending by category and by month, where the same item is
+/// cheaper, and one tip from Slip.
 class AnalyticsScreen extends StatefulWidget {
-  const AnalyticsScreen({super.key, required this.repo});
+  const AnalyticsScreen({super.key, required this.repo, this.now});
   final ReceiptRepository repo;
+
+  /// Today, for the ranges; tests pass a fixed day.
+  final DateTime? now;
 
   @override
   State<AnalyticsScreen> createState() => _AnalyticsScreenState();
@@ -37,6 +48,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> with ReloadOnChange {
   ReceiptRepository get repo => widget.repo;
 
   late Future<_Data> _data = _load();
+  InsightRange _range = InsightRange.threeMonths;
 
   @override
   void reload() {
@@ -44,345 +56,383 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> with ReloadOnChange {
   }
 
   Future<_Data> _load() async => _Data(
-        await widget.repo.receipts(),
-        await widget.repo.purchases(),
-        {for (final p in await widget.repo.products()) p.id: p.category},
+        await repo.receipts(),
+        await repo.purchases(),
+        {for (final p in await repo.products()) p.id: p.category},
       );
 
   @override
   Widget build(BuildContext context) {
+    final t = SlipTokens.of(context);
+    final now = widget.now ?? DateTime.now();
     return Scaffold(
-      appBar: AppBar(title: const Text('Insights')),
-      body: FutureBuilder(
-        future: _data,
-        builder: (context, snap) {
-          if (!snap.hasData) return const Center(child: CircularProgressIndicator());
-          final data = snap.data!;
-          if (data.receipts.isEmpty) {
-            return const Center(child: Text('Save a few receipts to see analytics.'));
-          }
-          final slots = storeSlots(data.receipts.map((r) => (r.storeId, r.storeName)));
-          final index = personalPriceIndex(data.purchases);
-          final changes = priceChanges(data.purchases);
-          final stores = storeComparison(data.purchases);
-          return ListView(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
-            children: [
-              _Headline(receipts: data.receipts, index: index),
-              _Section(
-                title: 'Spending by month',
-                child: MonthlySpendingChart(receipts: data.receipts, slots: slots),
-              ),
-              _Section(
-                title: 'Spending by category',
-                subtitle: 'All saved receipts, after discounts.',
-                child: _CategorySpending(data: data),
-              ),
-              _Section(
-                title: 'Your price index',
-                subtitle: 'How the prices of the things you buy have moved. '
-                    'First month = 100.',
-                child: _PriceIndexChart(points: index),
-              ),
-              _Section(
-                title: 'Biggest price changes',
-                subtitle: 'Latest price against what you usually paid.',
-                child: changes.isEmpty
-                    ? const _Empty('Buy the same item twice to see its price move.')
-                    : Column(children: [for (final c in changes.take(10)) _ChangeRow(c)]),
-              ),
-              _Section(
-                title: 'Store comparison',
-                subtitle: 'Items you have bought at more than one store.',
-                child: _StoreComparison(stores: stores, slots: slots),
-              ),
-            ],
-          );
-        },
+      body: SafeArea(
+        bottom: false,
+        child: FutureBuilder(
+          future: _data,
+          builder: (context, snap) {
+            final data = snap.data;
+            final header = [
+              Text('Insights', style: slipText(28, 900, color: t.ink, letterSpacing: -.5)),
+              const SizedBox(height: 10),
+              _RangeChips(value: _range, onChanged: (r) => setState(() => _range = r)),
+              const SizedBox(height: 12),
+            ];
+            if (data == null) {
+              return ListView(padding: const EdgeInsets.fromLTRB(14, 10, 14, 24), children: [
+                ...header,
+                for (final h in <double>[180, 200, 120])
+                  Padding(padding: const EdgeInsets.only(bottom: 10), child: Skeleton(height: h, radius: t.rCard)),
+              ]);
+            }
+            if (data.receipts.isEmpty) {
+              return ListView(padding: const EdgeInsets.fromLTRB(14, 10, 14, 24), children: [
+                ...header,
+                const SizedBox(height: 40),
+                const Center(child: SlipMascot(width: 56, mood: SlipMood.sleepy)),
+                const SizedBox(height: 12),
+                Center(
+                  child: Text('Save a few receipts to see insights.', style: slipText(14, 700, color: t.ink2)),
+                ),
+              ]);
+            }
+            final inRange = data.purchases.where((p) => _range.contains(p.date, now)).toList();
+            final receiptsInRange = data.receipts.where((r) => _range.contains(r.purchasedAt, now)).toList();
+            final index = indexFor(personalPriceIndex(data.purchases), _range, now);
+            final moves = priceChanges(data.purchases).where((c) => _range.contains(c.latest.date, now)).toList();
+            final stores = storeComparison(data.purchases);
+            final slots = storeSlots(data.receipts.map((r) => (r.storeId, r.storeName)));
+            final tip = _tip(stores, moves);
+            var i = 0;
+            Widget rise(Widget child) => Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: Rise(key: ValueKey((_range, i)), index: i++, child: child),
+                );
+            return ListView(
+              padding: const EdgeInsets.fromLTRB(14, 10, 14, 24),
+              children: [
+                ...header,
+                rise(_IndexCard(points: index, range: _range)),
+                rise(_MovesCard(moves: moves)),
+                rise(_CategoryCard(
+                  spend: spendByCategory(inRange, data.categories),
+                  label: _range == InsightRange.thisMonth ? DateFormat.MMMM().format(now) : _range.label,
+                )),
+                if (receiptsInRange.isNotEmpty)
+                  rise(_Card(
+                    title: 'Spending by month',
+                    child: MonthlySpendingChart(receipts: receiptsInRange, slots: slots),
+                  )),
+                if (stores.isNotEmpty) rise(_StoresCard(stores: stores, slots: slots)),
+                if (tip != null) rise(_TipCard(text: tip)),
+              ],
+            );
+          },
+        ),
       ),
     );
   }
+
+  /// One plain sentence worth acting on.
+  static String? _tip(List<StorePrices> stores, List<PriceChange> moves) {
+    if (cheaperStore(stores) case final c?) {
+      return '${c.winner} beat ${c.loser} on ${c.wins} of ${plural(c.shared, 'shared item')}.';
+    }
+    final riser = moves.where((m) => m.changeFraction >= .1).firstOrNull;
+    if (riser != null) {
+      return '${sentenceCase(riser.name)} went up ${(riser.changeFraction * 100).round()}%'
+          '${riser.latest.storeName == null ? '' : ' at ${riser.latest.storeName}'}. '
+          'Worth checking another store.';
+    }
+    return null;
+  }
 }
 
-class _Section extends StatelessWidget {
-  const _Section({required this.title, this.subtitle, required this.child});
+class _RangeChips extends StatelessWidget {
+  const _RangeChips({required this.value, required this.onChanged});
+  final InsightRange value;
+  final ValueChanged<InsightRange> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = SlipTokens.of(context);
+    return Wrap(spacing: 6, children: [
+      for (final r in InsightRange.values)
+        Semantics(
+          selected: r == value,
+          button: true,
+          child: GestureDetector(
+            onTap: () => onChanged(r),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              decoration: BoxDecoration(
+                color: r == value ? t.ink : t.surf2,
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Text(r.label, style: slipText(13, 900, color: r == value ? t.bg : t.ink2)),
+            ),
+          ),
+        ),
+    ]);
+  }
+}
+
+class _Card extends StatelessWidget {
+  const _Card({required this.title, this.trailing, required this.child});
   final String title;
-  final String? subtitle;
+  final Widget? trailing;
   final Widget child;
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.only(top: 24),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(title, style: theme.textTheme.titleMedium),
-        if (subtitle != null)
-          Text(subtitle!,
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
-        const SizedBox(height: 12),
+    final t = SlipTokens.of(context);
+    return SlipCard(
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Row(children: [
+          Expanded(child: Text(title, style: slipText(15, 900, color: t.ink))),
+          ?trailing,
+        ]),
+        const SizedBox(height: 10),
         child,
       ]),
     );
   }
 }
 
-class _Empty extends StatelessWidget {
-  const _Empty(this.text);
-  final String text;
-  @override
-  Widget build(BuildContext context) => Text(text,
-      style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant));
-}
-
-/// Two headline numbers: this month's spending and your price index change.
-class _Headline extends StatelessWidget {
-  const _Headline({required this.receipts, required this.index});
-  final List<ReceiptSummary> receipts;
-  final List<IndexPoint> index;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final palette = ChartPalette.of(context);
-    final latest = receipts.map((r) => r.purchasedAt).reduce((a, b) => a.isAfter(b) ? a : b);
-    final month = DateTime(latest.year, latest.month);
-    final spent = receipts
-        .where((r) => r.purchasedAt.year == month.year && r.purchasedAt.month == month.month)
-        .fold(0, (s, r) => s + r.spentCents);
-
-    Widget tile(String label, String value, {Widget? note}) => Expanded(
-          child: Card(
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(label, style: theme.textTheme.bodySmall),
-                const SizedBox(height: 4),
-                Text(value, style: theme.textTheme.headlineSmall),
-                ?note,
-              ]),
-            ),
-          ),
-        );
-
-    final change = index.length >= 2 ? index.last.value / 100 - 1 : null;
-    return Row(children: [
-      tile('Spent in ${DateFormat.yMMMM().format(month)}', '\$${formatCents(spent)}'),
-      const SizedBox(width: 8),
-      tile(
-        'Your prices since ${index.isEmpty ? '-' : DateFormat.yMMM().format(index.first.month)}',
-        change == null ? '—' : _percent(change),
-        note: change == null
-            ? Text('Needs two months', style: theme.textTheme.bodySmall)
-            : Row(children: [
-                Icon(change > 0 ? Icons.arrow_upward : Icons.arrow_downward,
-                    size: 14, color: change > 0 ? palette.badText : palette.goodText),
-                Flexible(
-                  child: Text(change > 0 ? ' Paying more' : ' Paying less',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                          color: change > 0 ? palette.badText : palette.goodText)),
-                ),
-              ]),
-      ),
-    ]);
-  }
-}
-
-/// Horizontal bars, one per category, largest first. One hue: the bars
-/// encode magnitude, and each carries its amount and share as text.
-class _CategorySpending extends StatelessWidget {
-  const _CategorySpending({required this.data});
-  final _Data data;
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = ChartPalette.of(context);
-    final theme = Theme.of(context);
-    final spent = <Category, int>{};
-    for (final p in data.purchases) {
-      final c = data.categories[p.productId] ?? Category.other;
-      spent[c] = (spent[c] ?? 0) + p.netCents;
-    }
-    if (spent.isEmpty) return const _Empty('No items saved yet.');
-    final rows = spent.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
-    final total = rows.fold(0, (s, e) => s + e.value);
-    final max = rows.first.value;
-    return Column(children: [
-      for (final e in rows)
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 4),
-          child: Row(children: [
-            SizedBox(width: 110, child: Text(e.key.label, style: theme.textTheme.bodySmall)),
-            Expanded(
-              child: LayoutBuilder(
-                builder: (context, c) => Align(
-                  alignment: Alignment.centerLeft,
-                  child: Container(
-                    width: math.max(2, c.maxWidth * e.value / max),
-                    height: 14,
-                    decoration: BoxDecoration(
-                      color: palette.series(0),
-                      borderRadius: const BorderRadius.horizontal(right: Radius.circular(4)),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            SizedBox(
-              width: 96,
-              child: Text(
-                '\$${formatCents(e.value)} · ${(e.value * 100 / total).round()}%',
-                textAlign: TextAlign.right,
-                style: theme.textTheme.bodySmall
-                    ?.copyWith(fontFeatures: const [FontFeature.tabularFigures()]),
-              ),
-            ),
-          ]),
-        ),
-    ]);
-  }
-}
-
-class _PriceIndexChart extends StatelessWidget {
-  const _PriceIndexChart({required this.points});
+/// "Your price index +5.4% since August", with a column per month.
+class _IndexCard extends StatelessWidget {
+  const _IndexCard({required this.points, required this.range});
   final List<IndexPoint> points;
+  final InsightRange range;
 
   @override
   Widget build(BuildContext context) {
+    final t = SlipTokens.of(context);
+    final onAcc = t.punchy ? t.accInk : Colors.white;
     if (points.length < 2) {
-      return const _Empty('Needs receipts from at least two months with some of the '
-          'same items.');
-    }
-    final palette = ChartPalette.of(context);
-    final values = points.map((p) => p.value);
-    final lo = math.min(values.reduce(math.min), 100.0);
-    final hi = math.max(values.reduce(math.max), 100.0);
-    final pad = math.max((hi - lo) * 0.2, 2.0);
-
-    return SizedBox(
-      height: 180,
-      child: LineChart(LineChartData(
-        minY: (lo - pad).floorToDouble(),
-        maxY: (hi + pad).ceilToDouble(),
-        borderData: FlBorderData(show: false),
-        gridData: FlGridData(
-          drawVerticalLine: false,
-          getDrawingHorizontalLine: (_) => FlLine(color: palette.grid, strokeWidth: 1),
-        ),
-        extraLinesData: ExtraLinesData(horizontalLines: [
-          HorizontalLine(y: 100, color: palette.baseline, strokeWidth: 1, dashArray: [4, 4]),
+      return HeroCard(
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('Your price index', style: slipText(13, 800, color: t.onAccSmall)),
+          const SizedBox(height: 6),
+          Text('Needs two months with some of the same items.', style: slipText(16, 900, color: onAcc)),
         ]),
-        titlesData: FlTitlesData(
-          topTitles: const AxisTitles(),
-          rightTitles: const AxisTitles(),
-          leftTitles: AxisTitles(
-            sideTitles: SideTitles(
-              showTitles: true,
-              reservedSize: 36,
-              minIncluded: false,
-              maxIncluded: false,
-              getTitlesWidget: (v, meta) => SideTitleWidget(
-                meta: meta,
-                child: Text(v.round().toString(),
-                    style: TextStyle(color: palette.muted, fontSize: 11)),
-              ),
+      );
+    }
+    final shown = points.length > 6 ? points.sublist(points.length - 6) : points;
+    final change = points.last.value / 100 - 1;
+    final lo = shown.map((p) => p.value).reduce(math.min), hi = shown.map((p) => p.value).reduce(math.max);
+    final since = DateFormat.MMMM().format(points.first.month);
+    return Semantics(
+      label: 'Your price index: ${change >= 0 ? 'up' : 'down'} ${(change.abs() * 100).toStringAsFixed(1)} percent '
+          'since $since. ${[for (final p in shown) '${DateFormat.MMMM().format(p.month)} ${p.value.toStringAsFixed(1)}'].join(', ')}.',
+      excludeSemantics: true,
+      child: HeroCard(
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('Your price index', style: slipText(13, 800, color: t.onAccSmall)),
+          Row(crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [
+            CountUpNumber(
+              value: change * 100,
+              signed: true,
+              suffix: '%',
+              style: slipText(34, 900, color: onAcc, tabular: true, height: 1.15),
             ),
-          ),
-          bottomTitles: AxisTitles(
-            sideTitles: SideTitles(
-              showTitles: true,
-              interval: 1,
-              getTitlesWidget: (v, meta) => v != v.roundToDouble()
-                  ? const SizedBox.shrink()
-                  : SideTitleWidget(
-                      meta: meta,
-                      child: Text(DateFormat.MMM().format(points[v.toInt()].month),
-                          style: TextStyle(color: palette.muted, fontSize: 11)),
+            const SizedBox(width: 8),
+            Text('since $since', style: slipText(13, 800, color: t.onAccSmall)),
+          ]),
+          const SizedBox(height: 10),
+          SizedBox(
+            height: 92,
+            child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+              for (final (i, p) in shown.indexed) ...[
+                if (i > 0) const SizedBox(width: 8),
+                Expanded(
+                  child: Column(mainAxisAlignment: MainAxisAlignment.end, children: [
+                    Text(p.value.toStringAsFixed(1), style: slipText(11, 900, color: onAcc, tabular: true)),
+                    const SizedBox(height: 3),
+                    GrowIn(
+                      delayMs: 120 * i,
+                      child: Container(
+                        height: 18 + 40 * (hi == lo ? .5 : (p.value - lo) / (hi - lo)),
+                        decoration: BoxDecoration(
+                          color: t.punchy ? t.accInk.withValues(alpha: .85) : Colors.white.withValues(alpha: .92),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
                     ),
-            ),
-          ),
-        ),
-        lineTouchData: LineTouchData(
-          touchTooltipData: LineTouchTooltipData(
-            getTooltipColor: (_) => palette.ink,
-            getTooltipItems: (spots) => [
-              for (final s in spots)
-                LineTooltipItem(
-                  '${DateFormat.yMMM().format(points[s.x.toInt()].month)}\n'
-                  '${points[s.x.toInt()].value.toStringAsFixed(1)} '
-                  '(${points[s.x.toInt()].comparedItems} items compared)',
-                  TextStyle(color: palette.surface, fontSize: 12),
+                    const SizedBox(height: 4),
+                    Text(DateFormat.MMM().format(p.month), style: slipText(11, 800, color: t.onAccSmall)),
+                  ]),
                 ),
-            ],
+              ],
+            ]),
           ),
-        ),
-        lineBarsData: [
-          LineChartBarData(
-            spots: [for (final (i, p) in points.indexed) FlSpot(i.toDouble(), p.value)],
-            color: palette.series(0),
-            barWidth: 2,
-            dotData: FlDotData(
-              getDotPainter: (_, _, _, _) => FlDotCirclePainter(
-                radius: 4,
-                color: palette.series(0),
-                strokeWidth: 2,
-                strokeColor: palette.surface,
-              ),
-            ),
-          ),
-        ],
-      )),
+        ]),
+      ),
     );
   }
 }
 
-class _ChangeRow extends StatelessWidget {
-  const _ChangeRow(this.change);
-  final PriceChange change;
+/// The biggest price moves, each with a bar that grows in.
+class _MovesCard extends StatelessWidget {
+  const _MovesCard({required this.moves});
+  final List<PriceChange> moves;
 
   @override
   Widget build(BuildContext context) {
-    final palette = ChartPalette.of(context);
-    final theme = Theme.of(context);
-    final up = change.changeFraction > 0;
-    final per = change.unit == 'each' ? '' : '/${change.unit}';
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(children: [
-        Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(change.name),
-            Text(
-              'usually \$${formatCents(change.typicalUnitPrice.round())}$per · '
-              'now \$${formatCents(change.latest.unitPrice.round())}$per'
-              '${change.latest.storeName == null ? '' : ' at ${change.latest.storeName}'}',
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-            ),
-          ]),
-        ),
-        Icon(up ? Icons.arrow_upward : Icons.arrow_downward,
-            size: 16, color: up ? palette.badText : palette.goodText),
-        Text(_percent(change.changeFraction),
-            style: TextStyle(
-                color: up ? palette.badText : palette.goodText, fontWeight: FontWeight.w600)),
+    final t = SlipTokens.of(context);
+    if (moves.isEmpty) {
+      return _Card(
+        title: 'Biggest price moves',
+        child: Text('Buy the same item twice at a store to see its price move.',
+            style: slipText(13, 700, color: t.ink2)),
+      );
+    }
+    final shown = moves.take(5).toList();
+    final maxAbs = shown.map((m) => m.changeFraction.abs()).reduce(math.max);
+    return _Card(
+      title: 'Biggest price moves',
+      child: Column(children: [
+        for (final (i, m) in shown.indexed)
+          () {
+            final up = m.changeFraction > 0;
+            final per = m.unit == 'each' ? '' : '/${m.unit}';
+            final pct = '${up ? '+' : '−'}${math.max(1, (m.changeFraction.abs() * 100).round())}%';
+            return Semantics(
+              label: '${m.name}: ${up ? 'up' : 'down'} $pct, from ${formatCents(m.typicalUnitPrice.round())} '
+                  'to ${formatCents(m.latest.unitPrice.round())}',
+              excludeSemantics: true,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: Row(children: [
+                  Expanded(
+                    flex: 5,
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text(sentenceCase(m.name),
+                          maxLines: 1, overflow: TextOverflow.ellipsis, style: slipText(13.5, 900, color: t.ink)),
+                      Text(
+                        '${m.latest.storeName ?? ''}${m.latest.storeName == null ? '' : ' · '}'
+                        '${formatCents(m.typicalUnitPrice.round())} → ${formatCents(m.latest.unitPrice.round())}$per',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: slipText(11.5, 700, color: t.ink2, tabular: true),
+                      ),
+                    ]),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    flex: 3,
+                    child: Container(
+                      height: 7,
+                      decoration: BoxDecoration(color: t.surf2, borderRadius: BorderRadius.circular(999)),
+                      child: FractionallySizedBox(
+                        alignment: Alignment.centerLeft,
+                        widthFactor: math.max(.08, m.changeFraction.abs() / maxAbs),
+                        child: GrowIn(
+                          axis: Axis.horizontal,
+                          delayMs: 100 * i,
+                          alignment: Alignment.centerLeft,
+                          child: Container(
+                            decoration: BoxDecoration(
+                                color: up ? t.up : t.down, borderRadius: BorderRadius.circular(999)),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  SizedBox(
+                    width: 52,
+                    child: Text(pct,
+                        textAlign: TextAlign.right,
+                        style: slipText(13, 900, color: up ? t.upText : t.downText, tabular: true)),
+                  ),
+                ]),
+              ),
+            );
+          }(),
       ]),
     );
   }
 }
 
-class _StoreComparison extends StatelessWidget {
-  const _StoreComparison({required this.stores, required this.slots});
+/// One stacked bar of spending by category, with a legend carrying the
+/// amounts. The six largest get their own colour; the rest are "Everything
+/// else".
+class _CategoryCard extends StatelessWidget {
+  const _CategoryCard({required this.spend, required this.label});
+  final List<(Category, int)> spend;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = SlipTokens.of(context);
+    final palette = ChartPalette.of(context);
+    final total = spend.fold(0, (s, e) => s + e.$2);
+    if (total <= 0) {
+      return _Card(
+        title: 'By category',
+        child: Text('Nothing saved in this range.', style: slipText(13, 700, color: t.ink2)),
+      );
+    }
+    final top = spend.take(6).toList();
+    final rest = spend.skip(6).fold(0, (s, e) => s + e.$2);
+    final parts = [
+      for (final (i, (c, cents)) in top.indexed) (c.label, cents, palette.series(i)),
+      if (rest > 0) ('Everything else', rest, palette.muted),
+    ];
+    return _Card(
+      title: 'By category',
+      trailing: Text('$label ${formatCents(total)}', style: slipText(12.5, 900, color: t.ink2, tabular: true)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        ExcludeSemantics(
+          child: GrowIn(
+            axis: Axis.horizontal,
+            alignment: Alignment.centerLeft,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(999),
+              child: SizedBox(
+                height: 14,
+                child: Row(children: [
+                  for (final (i, (_, cents, color)) in parts.indexed)
+                    Expanded(
+                      flex: math.max(1, (cents * 1000 / total).round()),
+                      child: Container(
+                        margin: EdgeInsets.only(left: i == 0 ? 0 : 2),
+                        color: color,
+                      ),
+                    ),
+                ]),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 10),
+        Wrap(spacing: 12, runSpacing: 6, children: [
+          for (final (name, cents, color) in parts)
+            Row(mainAxisSize: MainAxisSize.min, children: [
+              Container(
+                  width: 9, height: 9, decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(3))),
+              const SizedBox(width: 5),
+              Text(name, style: slipText(12, 800, color: t.ink)),
+              const SizedBox(width: 4),
+              Text(formatCents(cents), style: slipText(12, 700, color: t.ink2, tabular: true)),
+            ]),
+        ]),
+      ]),
+    );
+  }
+}
+
+/// Items bought at more than one store, and what each store charges.
+class _StoresCard extends StatelessWidget {
+  const _StoresCard({required this.stores, required this.slots});
   final List<StorePrices> stores;
   final Map<String, int> slots;
 
   @override
   Widget build(BuildContext context) {
-    if (stores.isEmpty) {
-      return const _Empty('Buy the same item at two stores to compare them.');
-    }
-    final theme = Theme.of(context);
+    final t = SlipTokens.of(context);
     final palette = ChartPalette.of(context);
     final names = {for (final s in stores) ...s.byStore.keys}.toList()
       ..sort((a, b) => (slots[a] ?? 99).compareTo(slots[b] ?? 99));
@@ -392,39 +442,72 @@ class _StoreComparison extends StatelessWidget {
         final gap = storeGap(stores, names[i], names[j]);
         if (gap == null) continue;
         // gap.fraction: how much pricier names[i] is than names[j].
-        final (pricier, cheaper) =
-            gap.fraction >= 0 ? (names[i], names[j]) : (names[j], names[i]);
+        final (pricier, cheaper) = gap.fraction >= 0 ? (names[i], names[j]) : (names[j], names[i]);
         final f = gap.fraction >= 0 ? 1 - 1 / (1 + gap.fraction) : -gap.fraction;
         summaries.add('$cheaper is ${(f * 100).toStringAsFixed(0)}% cheaper than $pricier '
-            'on the ${gap.items} item${gap.items == 1 ? '' : 's'} you bought at both.');
+            'on the ${plural(gap.items, 'item')} you bought at both.');
       }
     }
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      for (final s in summaries) Text(s, style: theme.textTheme.bodyMedium),
-      const SizedBox(height: 8),
-      for (final item in stores.take(10))
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 6),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(item.name),
-            Wrap(spacing: 12, children: [
-              for (final e in (item.byStore.entries.toList()
-                ..sort((a, b) => a.value.compareTo(b.value))))
-                Wrap(crossAxisAlignment: WrapCrossAlignment.center, children: [
-                  LegendChip(
-                    color: palette.series(slots[e.key] ?? 8),
-                    label: '${e.key} \$${formatCents(e.value.round())}'
-                        '${item.unit == 'each' ? '' : '/${item.unit}'}',
-                  ),
-                  if (e.key == item.cheapest.key)
-                    Text(' cheapest',
-                        style: theme.textTheme.bodySmall?.copyWith(color: palette.goodText)),
-                ]),
+    return _Card(
+      title: 'Same item, different stores',
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        for (final s in summaries)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Text(s, style: slipText(13.5, 800, color: t.ink)),
+          ),
+        for (final item in stores.take(6))
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(sentenceCase(item.name), style: slipText(13.5, 900, color: t.ink)),
+              const SizedBox(height: 3),
+              Wrap(spacing: 12, runSpacing: 4, children: [
+                for (final e in (item.byStore.entries.toList()..sort((a, b) => a.value.compareTo(b.value))))
+                  Row(mainAxisSize: MainAxisSize.min, children: [
+                    Container(
+                      width: 9,
+                      height: 9,
+                      decoration: BoxDecoration(color: palette.series(slots[e.key] ?? 8), shape: BoxShape.circle),
+                    ),
+                    const SizedBox(width: 5),
+                    Text('${e.key} ${formatCents(e.value.round())}${item.unit == 'each' ? '' : '/${item.unit}'}',
+                        style: slipText(12, 700, color: t.ink2, tabular: true)),
+                    if (e.key == item.cheapest.key)
+                      Text(' · cheapest', style: slipText(12, 900, color: t.downText)),
+                  ]),
+              ]),
             ]),
-          ]),
-        ),
-    ]);
+          ),
+      ]),
+    );
   }
 }
 
-String _percent(double f) => '${f >= 0 ? '+' : '−'}${(f.abs() * 100).toStringAsFixed(1)}%';
+class _TipCard extends StatelessWidget {
+  const _TipCard({required this.text});
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = SlipTokens.of(context);
+    return SlipCard(
+      color: t.downSoft,
+      padding: const EdgeInsets.fromLTRB(12, 12, 14, 12),
+      child: Row(children: [
+        const SlipMascot(width: 30),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              SlipIcon(Symbols.lightbulb_rounded, size: 14, color: t.downText, fill: 1),
+              const SizedBox(width: 4),
+              Text('Tip from Slip', style: slipText(11.5, 900, color: t.downText)),
+            ]),
+            Text(text, style: slipText(13.5, 800, color: t.ink)),
+          ]),
+        ),
+      ]),
+    );
+  }
+}

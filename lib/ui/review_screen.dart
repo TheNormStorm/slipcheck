@@ -11,6 +11,7 @@ import '../core/money.dart';
 import '../core/text.dart';
 import '../data/receipt_repository.dart';
 import 'components/kit.dart';
+import 'components/dialogs.dart';
 import 'line_item_row.dart';
 import 'motion/motion.dart';
 import 'saved_screen.dart';
@@ -346,20 +347,18 @@ class _ReviewScreenState extends State<ReviewScreen> {
 
   /// Leaving without saving: asks first, and removes the scan's photos.
   Future<bool> _confirmDiscard() async {
-    final discard = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(_editing ? 'Discard changes?' : 'Discard this receipt?'),
-        content: Text(_editing
-            ? 'The saved receipt stays as it was.'
-            : 'It has not been saved. Your corrections and the photos will be lost.'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Discard')),
-          FilledButton(onPressed: () => Navigator.pop(context, false), child: const Text('Keep editing')),
-        ],
-      ),
+    final discard = await confirmDialog(
+      context,
+      icon: Symbols.undo_rounded,
+      title: _editing ? 'Discard changes?' : 'Discard this receipt?',
+      body: _editing
+          ? 'The saved receipt stays as it was.'
+          : 'It has not been saved. Your corrections and the photos will be lost.',
+      confirm: 'Discard',
+      cancel: 'Keep editing',
+      danger: true,
     );
-    if (discard != true) return false;
+    if (!discard) return false;
     await widget.session?.deleteFiles();
     return true;
   }

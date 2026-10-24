@@ -6,10 +6,13 @@ import 'package:image_picker/image_picker.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:material_symbols_icons/symbols.dart';
 
+import '../core/text.dart';
 import '../data/backup.dart';
 import '../data/receipt_repository.dart';
 import '../ocr/receipt_reader.dart';
+import 'components/dialogs.dart';
 import 'onboarding_screen.dart';
 import 'reading_screen.dart';
 import 'review_screen.dart';
@@ -116,18 +119,15 @@ class AppActions {
       return;
     }
     if (!context.mounted) return;
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Restore this backup?'),
-        content: const Text('Replace everything with this backup? Slipcheck restarts after.'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Keep')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Restore')),
-        ],
-      ),
+    final ok = await confirmDialog(
+      context,
+      icon: Symbols.settings_backup_restore_rounded,
+      title: 'Restore this backup?',
+      body: 'Replace everything with this backup? Slipcheck restarts after.',
+      confirm: 'Restore',
+      danger: true,
     );
-    if (ok != true) return;
+    if (!ok) return;
     await repo.db.close();
     await Backup.restore(file);
     // The open database connection cannot be swapped in place; a fresh start
@@ -138,22 +138,15 @@ class AppActions {
   Future<void> clearAll(BuildContext context) async {
     final count = (await repo.receipts()).length;
     if (!context.mounted) return;
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Clear all $count receipt${count == 1 ? '' : 's'}?'),
-        content: const Text('Items, stores, photos and price history go too. No undo.'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Keep')),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Theme.of(context).colorScheme.error),
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Delete all'),
-          ),
-        ],
-      ),
+    final ok = await confirmDialog(
+      context,
+      icon: Symbols.delete_sweep_rounded,
+      title: 'Clear all ${plural(count, 'receipt')}?',
+      body: 'Items, stores, photos and price history go too. No undo.',
+      confirm: 'Delete all',
+      danger: true,
     );
-    if (ok != true) return;
+    if (!ok) return;
     await repo.clearAll();
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Everything cleared.')));

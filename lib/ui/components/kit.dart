@@ -6,6 +6,7 @@ import 'package:material_symbols_icons/symbols.dart';
 import '../../core/categories.dart';
 import '../motion/motion.dart';
 import '../theme/app_theme.dart';
+import '../theme/contrast.dart';
 import '../theme/tokens.dart';
 
 /// A surface card: radius, fill and (dark theme) outline from the tokens.
@@ -121,7 +122,7 @@ class StoreAvatar extends StatelessWidget {
         alignment: Alignment.center,
         decoration: BoxDecoration(color: color, shape: BoxShape.circle),
         child: Text(name.isEmpty ? '?' : name.characters.first.toUpperCase(),
-            style: slipText(size * .42, 900, color: Colors.white)),
+            style: slipText(size * .42, 900, color: readableOn(color))),
       );
 }
 

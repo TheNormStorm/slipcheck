@@ -726,34 +726,57 @@ class ReceiptRepository {
     if (deleteFiles) await ReceiptFiles.deleteAll();
   }
 
+  /// Every item, by name, with what was bought of it. One query for all
+  /// items rather than one per item.
   Future<List<ProductSummary>> products() async {
     final products = await (db.select(db.products)
           ..orderBy([(p) => OrderingTerm.asc(p.displayName)]))
         .get();
-    final summaries = <ProductSummary>[];
-    for (final p in products) {
-      final history = await priceHistory(p.id);
-      summaries.add(ProductSummary(
-        p.id,
-        p.displayName,
-        history.length,
-        history.lastOrNull?.unitPriceCents,
-        history.lastOrNull?.unit ?? 'each',
-        Category.byName(p.category) ?? Category.other,
-        {for (final h in history) if (h.storeId != null) h.storeId!},
-        history.fold(0, (sum, h) => sum + h.netCents),
-      ));
+    final history = <int, List<PricePoint>>{};
+    for (final (productId, point) in await _pricePoints()) {
+      history.putIfAbsent(productId, () => []).add(point);
     }
-    return summaries;
+    return [
+      for (final p in products)
+        () {
+          final h = history[p.id] ?? const <PricePoint>[];
+          return ProductSummary(
+            p.id,
+            p.displayName,
+            h.length,
+            h.lastOrNull?.unitPriceCents,
+            h.lastOrNull?.unit ?? 'each',
+            Category.byName(p.category) ?? Category.other,
+            {for (final x in h) if (x.storeId != null) x.storeId!},
+            h.fold(0, (sum, x) => sum + x.netCents),
+          );
+        }(),
+    ];
+  }
+
+  /// The different ways receipts printed [productId], most often first.
+  Future<List<String>> namesRead(int productId) async {
+    final rows = await (db.select(db.lineItems)..where((l) => l.productId.equals(productId))).get();
+    final counts = <String, int>{};
+    for (final r in rows) {
+      final name = r.rawText.trim();
+      if (name.isNotEmpty) counts[name] = (counts[name] ?? 0) + 1;
+    }
+    return counts.keys.toList()..sort((a, b) => counts[b]!.compareTo(counts[a]!));
   }
 
   /// Every purchase of [productId], oldest first.
-  Future<List<PricePoint>> priceHistory(int productId) async {
+  Future<List<PricePoint>> priceHistory(int productId) async =>
+      [for (final (_, point) in await _pricePoints(productId: productId)) point];
+
+  /// Purchases of known products (or one product), oldest first, with the
+  /// product each is of.
+  Future<List<(int, PricePoint)>> _pricePoints({int? productId}) async {
     final query = db.select(db.lineItems).join([
       innerJoin(db.receipts, db.receipts.id.equalsExp(db.lineItems.receiptId)),
       leftOuterJoin(db.stores, db.stores.id.equalsExp(db.receipts.storeId)),
     ])
-      ..where(db.lineItems.productId.equals(productId))
+      ..where(productId == null ? db.lineItems.productId.isNotNull() : db.lineItems.productId.equals(productId))
       ..orderBy([OrderingTerm.asc(db.receipts.purchasedAt), OrderingTerm.asc(db.receipts.id)]);
     final rows = await query.get();
     return [
@@ -761,14 +784,17 @@ class ReceiptRepository {
         () {
           final item = r.readTable(db.lineItems);
           final receipt = r.readTable(db.receipts);
-          return PricePoint(
-            receiptId: receipt.id,
-            date: receipt.purchasedAt,
-            storeName: r.readTableOrNull(db.stores)?.name,
-            storeId: r.readTableOrNull(db.stores)?.id,
-            quantity: item.quantity,
-            unit: item.unit,
-            netCents: item.lineTotalCents - item.discountCents,
+          return (
+            item.productId!,
+            PricePoint(
+              receiptId: receipt.id,
+              date: receipt.purchasedAt,
+              storeName: r.readTableOrNull(db.stores)?.name,
+              storeId: r.readTableOrNull(db.stores)?.id,
+              quantity: item.quantity,
+              unit: item.unit,
+              netCents: item.lineTotalCents - item.discountCents,
+            ),
           );
         }(),
     ];

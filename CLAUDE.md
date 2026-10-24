@@ -42,3 +42,5 @@ Do not add cloud OCR/LLM services without asking.
 ## Commands
 - `flutter test` — must pass before committing.
 - `flutter analyze` — keep clean.
+- Text contrast is tested (test/ui/contrast_test.dart): add any new text /
+  background pair there.

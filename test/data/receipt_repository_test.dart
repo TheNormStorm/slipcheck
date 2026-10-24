@@ -259,6 +259,18 @@ void main() {
     expect(await repo.receiptsWithItem('  '), isEmpty);
   });
 
+  test('the names an item was printed as, most often first', () async {
+    for (final (day, name) in [(1, 'MILK 2% 1GAL'), (2, 'MILK 2% 1GAL'), (3, 'MILK 2% 1 GAL')]) {
+      final draft = ReceiptDraft(
+          storeName: 'Market Basket', purchasedAt: DateTime(2026, 9, day), lines: [DraftLine(name: name, lineTotalCents: 409)]);
+      if (day == 3) draft.lines.single.productId = (await repo.products()).single.id;
+      await repo.saveReceipt(draft);
+    }
+    final milk = (await repo.products()).single;
+    expect(milk.purchaseCount, 3);
+    expect(await repo.namesRead(milk.id), ['MILK 2% 1GAL', 'MILK 2% 1 GAL']);
+  });
+
   group('duplicates and editing', () {
     ReceiptDraft mb({int? total, List<DraftLine>? lines}) => ReceiptDraft(
           storeName: 'Market Basket',

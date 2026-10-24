@@ -16,6 +16,7 @@ import 'motion/motion.dart';
 import 'receipt_detail_screen.dart';
 import 'reload_on_change.dart';
 import 'theme/app_theme.dart';
+import 'theme/contrast.dart';
 import 'theme/tokens.dart';
 
 /// One store: a header in its colour, what you spend there, what changed
@@ -128,8 +129,10 @@ class _StoreScreenState extends State<StoreScreen> with ReloadOnChange {
         }
         final receipts = data.receipts;
         final picked = receipts.where((r) => _picked.contains(r.id)).length;
+        final band = ChartPalette.of(context).series(data.slot ?? 8);
         return AnnotatedRegion<SystemUiOverlayStyle>(
-          value: SystemUiOverlayStyle.light,
+          // Status bar icons readable on the store's colour.
+          value: readableOn(band) == Colors.white ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark,
           child: Scaffold(
           body: ListView(
             padding: EdgeInsets.zero,
@@ -223,7 +226,7 @@ class _Header extends StatelessWidget {
     final s = data.store;
     final trips = data.receipts.length;
     final perTrip = trips == 0 ? 0 : s.spentCents ~/ trips;
-    const onBand = Colors.white;
+    final onBand = readableOn(color);
     Widget tile(String label, String value) => Expanded(
           child: StatTile(label: label, value: Text(value, style: slipText(18, 900, color: t.ink, tabular: true))),
         );
@@ -236,7 +239,7 @@ class _Header extends StatelessWidget {
             CircleAction(
               icon: Symbols.arrow_back_rounded,
               tooltip: 'Back',
-              color: Colors.white.withValues(alpha: .22),
+              color: onBand.withValues(alpha: .18),
               iconColor: onBand,
               onTap: () => Navigator.maybePop(context),
             ),

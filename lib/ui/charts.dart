@@ -59,7 +59,7 @@ class MonthlySpendingChart extends StatelessWidget {
                 interval: niceMax(maxY) / 4,
                 getTitlesWidget: (v, meta) => SideTitleWidget(
                   meta: meta,
-                  child: Text('\$${v.round()}',
+                  child: Text('${v.round()}',
                       style: TextStyle(color: palette.muted, fontSize: 11)),
                 ),
               ),
@@ -83,8 +83,8 @@ class MonthlySpendingChart extends StatelessWidget {
                 final parts = byMonth[m]!;
                 return BarTooltipItem(
                   '${DateFormat.yMMM().format(m)}\n'
-                  '${[for (final s in storeOrder.where(parts.containsKey)) '$s \$${formatCents(parts[s]!)}'].join('\n')}'
-                  '${parts.keys.any((s) => !slots.containsKey(s)) ? '\n${parts.entries.where((e) => !slots.containsKey(e.key)).map((e) => '${e.key} \$${formatCents(e.value)}').join('\n')}' : ''}',
+                  '${[for (final s in storeOrder.where(parts.containsKey)) '$s ${formatCents(parts[s]!)}'].join('\n')}'
+                  '${parts.keys.any((s) => !slots.containsKey(s)) ? '\n${parts.entries.where((e) => !slots.containsKey(e.key)).map((e) => '${e.key} ${formatCents(e.value)}').join('\n')}' : ''}',
                   TextStyle(color: palette.surface, fontSize: 12),
                 );
               },
@@ -119,7 +119,7 @@ class MonthlySpendingChart extends StatelessWidget {
       // The same numbers as text (the lighter colours are low-contrast).
       for (final m in shown.reversed.take(3))
         Text(
-          '${DateFormat.yMMMM().format(m)}: \$${formatCents(byMonth[m]!.values.fold(0, (s, v) => s + v))}',
+          '${DateFormat.yMMMM().format(m)}: ${formatCents(byMonth[m]!.values.fold(0, (s, v) => s + v))}',
           style: Theme.of(context).textTheme.bodySmall,
         ),
     ]);

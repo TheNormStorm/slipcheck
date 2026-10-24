@@ -13,6 +13,7 @@ import '../data/receipt_repository.dart';
 import 'chart_palette.dart';
 import 'compare_screen.dart';
 import 'components/kit.dart';
+import 'components/dialogs.dart';
 import 'line_item_row.dart';
 import 'motion/motion.dart';
 import 'review_screen.dart';
@@ -91,24 +92,17 @@ class _ReceiptDetailScreenState extends State<ReceiptDetailScreen> {
   }
 
   Future<void> _delete(ReceiptDetail detail) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete this receipt?'),
-        content: Text('${detail.summary.storeName ?? 'This receipt'}, '
-            '${DateFormat.yMMMd().format(detail.summary.purchasedAt)}, '
-            'and its ${plural(detail.lines.length, 'item')} go from your history.'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Keep')),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Theme.of(context).colorScheme.error),
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
+    final ok = await confirmDialog(
+      context,
+      icon: Symbols.delete_rounded,
+      title: 'Delete this receipt?',
+      body: '${detail.summary.storeName ?? 'This receipt'}, '
+          '${DateFormat.yMMMd().format(detail.summary.purchasedAt)}, '
+          'and its ${plural(detail.lines.length, 'item')} go from your history.',
+      confirm: 'Delete',
+      danger: true,
     );
-    if (ok != true) return;
+    if (!ok) return;
     await widget.repo.deleteReceipt(widget.receiptId);
     if (mounted) Navigator.pop(context, true);
   }

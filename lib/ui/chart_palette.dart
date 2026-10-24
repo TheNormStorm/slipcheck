@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../core/categories.dart';
 import 'theme/tokens.dart';
 
 /// Chart colours: the dataviz reference palette, validated for colour-vision
@@ -45,6 +46,19 @@ class ChartPalette {
   Color get goodText => _t.downText;
   Color get badText => _t.upText;
 }
+
+/// A category's colour for its icon tile: a fixed slot so an item looks the
+/// same everywhere. (Charts that put categories side by side colour them by
+/// rank instead, so neighbours always differ.)
+Color categoryColor(Category c, ChartPalette palette) => switch (c) {
+      Category.produce || Category.snacks => palette.series(1),
+      Category.meat || Category.pet => palette.series(6),
+      Category.dairy || Category.drinks => palette.series(0),
+      Category.bakery || Category.pantry => palette.series(2),
+      Category.frozen || Category.household => palette.series(5),
+      Category.personalCare => palette.series(3),
+      Category.deposits || Category.other => palette.muted,
+    };
 
 /// Gives each store a fixed colour slot by when it was first seen (its id),
 /// so a store keeps its colour on every chart and filter.
