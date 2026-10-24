@@ -160,6 +160,10 @@ Same steps, for the other two branches. Try it without looking back up.
 - `mismatch-help`: when a receipt doesn't add up, Check it suggests the
   likely fix ("may be 2850.00, not 850.00"), and "Send reading details"
   shares what the OCR read.
+- `scorecard`: the receipt scorecard. It's built on top of
+  `fix-big-amounts`, so merge that one first; then this PR only shows the
+  scorecard's own commit. (A branch built on another branch is called
+  *stacked*.)
 
 Hints:
 ```bash
@@ -177,10 +181,10 @@ changed the same lines differently, so Git can't choose. These three
 don't overlap, so it shouldn't happen here. If it ever does, ask Claude:
 "resolve the conflicts on <branch>".
 
-**Check:** `git log --oneline --graph -12` shows three merges on main.
+**Check:** `git log --oneline --graph -12` shows four merges on main.
 Then delete your local copies of the merged branches:
 ```bash
-git branch -d fix-big-amounts update-check mismatch-help
+git branch -d fix-big-amounts update-check mismatch-help scorecard
 ```
 `-d` refuses to delete a branch that isn't merged, so this is safe.
 
