@@ -26,7 +26,10 @@ class MonthlySpendingChart extends StatelessWidget {
     }
     final months = byMonth.keys.toList()..sort();
     final shown = months.length > 12 ? months.sublist(months.length - 12) : months;
-    final storeOrder = slots.keys.toList()..sort((a, b) => slots[a]!.compareTo(slots[b]!));
+    // Stores with spending in the months shown; [slots] covers every store
+    // so a store keeps its colour, but the legend lists only these.
+    final storeOrder = slots.keys.where((s) => shown.any((m) => byMonth[m]!.containsKey(s))).toList()
+      ..sort((a, b) => slots[a]!.compareTo(slots[b]!));
     Color colorOf(String store) => palette.series(slots[store] ?? 8);
     final maxY = shown
         .map((m) => byMonth[m]!.values.fold(0, (s, v) => s + v) / 100)
