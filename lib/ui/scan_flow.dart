@@ -43,6 +43,9 @@ Future<List<String>?> capturePages(BuildContext context, {int pageLimit = 8}) as
 class ScanSession {
   ScanSession(this.reader, List<PageRead> pages) : result = reader.combine(pages);
 
+  /// A session for photos already read and joined (by the Reading screen).
+  ScanSession.read(this.reader, this.result);
+
   final ReceiptReader reader;
   ReadResult result;
 

@@ -13,8 +13,12 @@ Do not add cloud OCR/LLM services without asking.
 - `lib/data/` — drift SQLite database (`database.dart`, generated `database.g.dart`)
   and `ReceiptRepository`.
 - `lib/ocr/` — ML Kit adapter that turns an image into `OcrLine`s (text + bounding box).
-- `lib/ui/` — screens. Kept minimal on purpose (testing UI). `scan_flow.dart`
+  `read_pipeline.dart` runs the reading steps and reports real progress to the
+  Reading screen; its log must only show redacted rows (tested).
+- `lib/ui/` — screens, redesigned from the handoff in docs/ui-redesign-plan.md
+  (tokens in `theme/`, motion widgets honour reduced motion). `scan_flow.dart`
   wraps the document scanner and the photos behind a receipt under review.
+  Scan flow: tips (first time) → scanner → Reading → Check it → Saved.
 - `test/fixtures/` — OCR output samples used by parser tests. `*.json` files are
   real ML Kit output (redact names). The app writes the same JSON per photo to
   `Android/data/com.slipcheck.slipcheck/files/ocr/` — that is how new fixtures
@@ -28,6 +32,7 @@ Do not add cloud OCR/LLM services without asking.
 
 ## Conventions
 - Money is integer cents (`int`) everywhere; never `double` for money.
+- The code is hand-formatted (~110 columns). Don't run `dart format`.
 - Quantities may be fractional (weighed items), stored as `double`.
 - Product sizes are normalised to ml / g / each.
 - Fuzzy product matches are suggestions; only user confirmation creates an alias.

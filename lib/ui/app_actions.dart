@@ -10,7 +10,10 @@ import 'package:share_plus/share_plus.dart';
 import '../data/backup.dart';
 import '../data/receipt_repository.dart';
 import '../ocr/receipt_reader.dart';
+import 'onboarding_screen.dart';
+import 'reading_screen.dart';
 import 'review_screen.dart';
+import 'saved_screen.dart';
 import 'scan_flow.dart';
 
 /// What the app can do from anywhere: capture a receipt (scanner, gallery,
@@ -24,21 +27,38 @@ class AppActions {
   /// True while photos are being read.
   final busy = ValueNotifier(false);
 
+  /// The last receipt saved, for the Home message.
+  final saved = ValueNotifier<SavedNote?>(null);
+
+  void _onSaved(SavedNote note) => saved.value = note;
+
+  static const _tipsKey = 'scanTipsSeen';
+
+  /// The scanner, after its tips the first time.
   Future<void> scan(BuildContext context) async {
+    if (!await repo.hasSeen(_tipsKey)) {
+      if (!context.mounted) return;
+      final go = await Navigator.of(context).push<bool>(
+          MaterialPageRoute(builder: (_) => const ScanTipsScreen(), fullscreenDialog: true));
+      if (go != true) return;
+      await repo.markSeen(_tipsKey);
+    }
+    if (!context.mounted) return;
     final paths = await capturePages(context);
-    if (paths != null && context.mounted) await _read(context, paths);
+    if (paths != null && context.mounted) await _read(context, paths, scanned: true);
   }
 
   Future<void> gallery(BuildContext context) async {
     final picked = await ImagePicker().pickMultiImage();
     if (picked.isNotEmpty && context.mounted) {
-      await _read(context, [for (final f in picked) f.path]);
+      await _read(context, [for (final f in picked) f.path], scanned: false);
     }
   }
 
   Future<void> typeIt(BuildContext context) => Navigator.of(context).push<bool>(MaterialPageRoute(
         builder: (_) => ReviewScreen(
           repo: repo,
+          onSaved: _onSaved,
           draft: ReceiptDraft(
             storeName: '',
             purchasedAt: DateTime.now(),
@@ -48,20 +68,19 @@ class AppActions {
         ),
       ));
 
-  /// OCRs every photo (top of the receipt first) and opens the review.
-  Future<void> _read(BuildContext context, List<String> paths) async {
+  /// Reads the photos on the Reading screen, which opens "Check it".
+  Future<void> _read(BuildContext context, List<String> paths, {required bool scanned}) async {
     busy.value = true;
     try {
-      final pages = [for (final path in paths) await reader.readPage(path)];
-      if (!context.mounted) return;
       await Navigator.of(context).push<bool>(MaterialPageRoute(
-        builder: (_) => ReviewScreen(repo: repo, session: ScanSession(reader, pages)),
+        builder: (_) => ReadingScreen(
+          repo: repo,
+          reader: reader,
+          paths: paths,
+          scanned: scanned,
+          onSaved: _onSaved,
+        ),
       ));
-    } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Could not read receipt: $e')));
-      }
     } finally {
       busy.value = false;
     }

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -21,6 +22,7 @@ class Motion {
 /// Runs a one-shot animation after [delay], unless motion is reduced.
 mixin _OneShot<T extends StatefulWidget> on State<T>, SingleTickerProviderStateMixin<T> {
   late final AnimationController controller;
+  Timer? _start;
   Duration get duration;
   Duration get delay;
 
@@ -33,18 +35,17 @@ mixin _OneShot<T extends StatefulWidget> on State<T>, SingleTickerProviderStateM
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (controller.isAnimating || controller.isCompleted) return;
+    if (_start != null || controller.isAnimating || controller.isCompleted) return;
     if (Motion.reduced(context)) {
       controller.value = 1;
     } else {
-      Future.delayed(delay, () {
-        if (mounted) controller.forward();
-      });
+      _start = Timer(delay, controller.forward);
     }
   }
 
   @override
   void dispose() {
+    _start?.cancel();
     controller.dispose();
     super.dispose();
   }

@@ -212,6 +212,13 @@ class ReceiptRepository {
   /// open screens can reload.
   Stream<void> get changes => db.tableUpdates();
 
+  /// A one-off moment the app has shown (onboarding, scanner tips).
+  Future<bool> hasSeen(String key) async =>
+      await (db.select(db.settings)..where((s) => s.key.equals(key))).getSingleOrNull() != null;
+
+  Future<void> markSeen(String key) =>
+      db.into(db.settings).insertOnConflictUpdate(SettingsCompanion.insert(key: key, value: '1'));
+
   /// The store [name] refers to: the same name, or one OCR read slightly
   /// differently ("MARKFT BASKET"), so one store is not split in two.
   Future<int?> findStoreId(String name) async {

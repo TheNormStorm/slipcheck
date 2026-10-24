@@ -5,6 +5,7 @@ import 'package:slipcheck/data/database.dart';
 import 'package:slipcheck/data/receipt_repository.dart';
 import 'package:slipcheck/ui/line_item_row.dart';
 import 'package:slipcheck/ui/review_screen.dart';
+import 'package:slipcheck/ui/saved_screen.dart';
 
 void main() {
   late AppDatabase db;
@@ -41,7 +42,7 @@ void main() {
     expect(find.text('1.234 kg @ 1.52/kg'), findsOneWidget);
     expect(find.text('Discount −1.00'), findsOneWidget);
     expect(find.text('6.99'), findsOneWidget);
-    expect(find.text('Matches the receipt subtotal'), findsOneWidget);
+    expect(find.text('Matches subtotal 12.85'), findsOneWidget);
   });
 
   testWidgets('a total that does not add up is called out', (tester) async {
@@ -69,7 +70,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Milk 2% 1L'), findsOneWidget);
 
-    await tester.tap(find.text('Save receipt'));
+    await tester.tap(find.textContaining('Save ·'));
     await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 100)));
     await tester.pump();
     final products = await tester.runAsync(repo.products);
@@ -107,7 +108,7 @@ void main() {
       purchasedAt: DateTime(2026, 10, 18),
       lines: [DraftLine(name: 'MILK', lineTotalCents: 469)],
     ));
-    await tester.tap(find.text('Save receipt'));
+    await tester.tap(find.textContaining('Save ·'));
     await tester.pumpAndSettle();
     expect(find.text('Which store?'), findsOneWidget);
     await tester.enterText(find.byType(TextField).last, 'Market Basket');
@@ -138,6 +139,66 @@ void main() {
     expect(find.text('Discard this receipt?'), findsOneWidget);
     await tester.tap(find.text('Keep editing'));
     await tester.pumpAndSettle();
-    expect(find.text('Check receipt'), findsOneWidget);
+    expect(find.text('Type it in'), findsOneWidget);
+  });
+
+  testWidgets('saving shows the celebration, then reports what was tracked', (tester) async {
+    tester.view.physicalSize = const Size(1080, 2400);
+    addTearDown(tester.view.reset);
+    // An earlier visit, so the milk's price can go up.
+    await tester.runAsync(() => repo.saveReceipt(ReceiptDraft(
+          storeName: 'FreshMart',
+          purchasedAt: DateTime(2026, 10, 1),
+          lines: [DraftLine(name: 'MILK 2% 1L', lineTotalCents: 449)],
+          totalCents: 449,
+        )));
+    SavedNote? reported;
+    await tester.pumpWidget(MaterialApp(
+      home: ReviewScreen(
+        repo: repo,
+        onSaved: (n) => reported = n,
+        draft: ReceiptDraft(
+          storeName: 'FreshMart',
+          purchasedAt: DateTime(2026, 10, 18),
+          lines: [
+            DraftLine(name: 'MILK 2% 1L', lineTotalCents: 499),
+            DraftLine(name: 'BREAD', lineTotalCents: 349),
+          ],
+          totalCents: 848,
+        ),
+      ),
+    ));
+    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
+    await tester.pump();
+    expect(find.text('↑ 11% vs usual 4.49'), findsOneWidget);
+
+    await tester.tap(find.text('Save · 8.48'));
+    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 200)));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 3));
+    expect(find.text('SAVED'), findsOneWidget);
+    expect(find.text('Tracked! 2 items'), findsOneWidget);
+    expect(find.text('↑ 1 went up'), findsOneWidget);
+
+    await tester.pump(const Duration(seconds: 2));
+    await tester.pumpAndSettle();
+    expect(reported?.itemCount, 2);
+    expect(reported?.moves.up, 1);
+  });
+
+  testWidgets('a total that does not match asks before saving', (tester) async {
+    await show(tester, ReceiptDraft(
+      storeName: 'QuickStop',
+      purchasedAt: DateTime(2026, 10, 21),
+      lines: [DraftLine(name: 'CHIPS', lineTotalCents: 249)],
+      totalCents: 548,
+    ));
+    await tester.tap(find.textContaining('Save ·'));
+    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
+    await tester.pumpAndSettle();
+    expect(find.text('Off by 2.99, save anyway?'), findsOneWidget);
+    await tester.tap(find.text('Check it'));
+    await tester.pumpAndSettle();
+    expect(await tester.runAsync(repo.receipts), isEmpty);
   });
 }

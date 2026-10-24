@@ -13,7 +13,8 @@ import '../data/receipt_files.dart';
 
 /// One photo of (part of) a receipt after OCR.
 class PageRead {
-  PageRead(this.imagePath, this.rows, this.problem);
+  PageRead(this.imagePath, this.rows, this.problem, {int? lineCount})
+      : lineCount = lineCount ?? rows.length;
 
   /// Where the photo was copied inside the app's own storage.
   final String imagePath;
@@ -21,6 +22,9 @@ class PageRead {
 
   /// Why this photo may read badly (see `pageProblem`), or null.
   final String? problem;
+
+  /// Text lines ML Kit found, before they were grouped into rows.
+  final int lineCount;
 }
 
 class ReadResult {
@@ -31,6 +35,15 @@ class ReadResult {
   final ParsedReceipt parsed;
 
   List<String> get imagePaths => [for (final page in pages) page.imagePath];
+}
+
+/// Puts [pages] in receipt order (see `bestPageOrder`), stitches them and
+/// parses the result. The returned pages are in the order used.
+ReadResult combinePages(List<PageRead> pages, ReceiptParser parser) {
+  final order = bestPageOrder([for (final page in pages) page.rows]);
+  final ordered = [for (final i in order) pages[i]];
+  final stitch = stitchPages([for (final page in ordered) page.rows]);
+  return ReadResult(ordered, stitch, parser.parse(stitch.rows));
 }
 
 /// Reads receipt photos entirely on the device with ML Kit's bundled Latin
@@ -56,17 +69,11 @@ class ReceiptReader {
     ];
     // The card section is left out of the saved OCR lines.
     await _saveOcrDump(imagePath, withoutPaymentLines(lines));
-    return PageRead(imagePath, groupIntoRows(lines), pageProblem(lines));
+    return PageRead(imagePath, groupIntoRows(lines), pageProblem(lines), lineCount: lines.length);
   }
 
-  /// Puts [pages] in receipt order (see `bestPageOrder`), stitches them and
-  /// parses the result. The returned pages are in the order used.
-  ReadResult combine(List<PageRead> pages) {
-    final order = bestPageOrder([for (final page in pages) page.rows]);
-    final ordered = [for (final i in order) pages[i]];
-    final stitch = stitchPages([for (final page in ordered) page.rows]);
-    return ReadResult(ordered, stitch, parser.parse(stitch.rows));
-  }
+  /// See [combinePages].
+  ReadResult combine(List<PageRead> pages) => combinePages(pages, parser);
 
   Future<String> _keepCopy(String source) async {
     final dir = await ReceiptFiles.photosDir();

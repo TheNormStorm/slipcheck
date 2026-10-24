@@ -94,6 +94,8 @@ in cents, parts of a comparison add up exactly).
 
 ## Phases
 
+Status: phases 1 and 2 are done.
+
 Each phase ends with:
 - `flutter analyze` clean and `flutter test` green;
 - screenshots on the emulator in light and dark, compared side by side with

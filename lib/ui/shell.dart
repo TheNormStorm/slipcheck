@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:material_symbols_icons/symbols.dart';
 
+import '../core/text.dart';
 import 'analytics_screen.dart';
 import 'app_actions.dart';
 import 'components/kit.dart';
 import 'home_screen.dart';
 import 'products_screen.dart';
+import 'receipt_detail_screen.dart';
 import 'receipts_screen.dart';
 import 'theme/app_theme.dart';
 import 'theme/tokens.dart';
@@ -22,6 +24,37 @@ class AppShell extends StatefulWidget {
 
 class _AppShellState extends State<AppShell> {
   int _tab = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.actions.saved.addListener(_showSaved);
+  }
+
+  @override
+  void dispose() {
+    widget.actions.saved.removeListener(_showSaved);
+    super.dispose();
+  }
+
+  /// "Saved! 9 items tracked." with a way to open the receipt.
+  void _showSaved() {
+    final note = widget.actions.saved.value;
+    if (note == null || !mounted) return;
+    final up = note.moves.up;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+        content: Text('Saved! ${plural(note.itemCount, 'item')} tracked.'
+            '${up > 0 ? ' ${plural(up, 'price')} went up.' : ''}'),
+        action: SnackBarAction(
+          label: 'View',
+          onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+            builder: (_) => ReceiptDetailScreen(repo: widget.actions.repo, receiptId: note.receiptId),
+          )),
+        ),
+      ));
+  }
 
   @override
   Widget build(BuildContext context) {

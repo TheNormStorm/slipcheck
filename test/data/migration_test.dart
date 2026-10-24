@@ -4,6 +4,7 @@ import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:slipcheck/data/database.dart';
+import 'package:slipcheck/data/receipt_repository.dart';
 
 void main() {
   test('upgrading to v4 removes card details from saved OCR text', () async {
@@ -26,5 +27,25 @@ void main() {
     final text = (await db.select(db.receipts).getSingle()).ocrText!;
     await db.close();
     expect(text, 'MILK  4.29\nTOTAL  4.29');
+  });
+
+  test('upgrading to v5 adds the settings table', () async {
+    final dir = Directory.systemTemp.createTempSync('slipcheck_migration');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    final file = File('${dir.path}/app.sqlite');
+
+    var db = AppDatabase(NativeDatabase(file));
+    await db.select(db.receipts).get();
+    await db.customStatement('DROP TABLE settings');
+    await db.customStatement('PRAGMA user_version = 4');
+    await db.close();
+
+    db = AppDatabase(NativeDatabase(file));
+    final repo = ReceiptRepository(db);
+    expect(await repo.hasSeen('onboarding'), isFalse);
+    await repo.markSeen('onboarding');
+    await repo.markSeen('onboarding');
+    expect(await repo.hasSeen('onboarding'), isTrue);
+    await db.close();
   });
 }

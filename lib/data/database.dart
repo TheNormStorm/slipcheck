@@ -95,14 +95,30 @@ class LineItems extends Table {
   TextColumn get section => text().nullable()();
 }
 
-@DriftDatabase(
-    tables: [Stores, Receipts, ReceiptImages, Products, ProductAliases, LineItems])
+/// App preferences as key/value pairs ("onboardingSeen" → "1").
+class Settings extends Table {
+  TextColumn get key => text()();
+  TextColumn get value => text()();
+
+  @override
+  Set<Column> get primaryKey => {key};
+}
+
+@DriftDatabase(tables: [
+  Stores,
+  Receipts,
+  ReceiptImages,
+  Products,
+  ProductAliases,
+  LineItems,
+  Settings,
+])
 class AppDatabase extends _$AppDatabase {
   AppDatabase([QueryExecutor? executor])
       : super(executor ?? driftDatabase(name: 'slipcheck'));
 
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 5;
 
   /// For receipts saved before version 3: re-reads each receipt's stored OCR
   /// text to recover the barcode and department heading of every line, then
@@ -156,6 +172,7 @@ class AppDatabase extends _$AppDatabase {
                   ocrText: Value(withoutPaymentSection(text.split('\n')).join('\n'))));
             }
           }
+          if (from < 5) await m.createTable(settings);
         },
         beforeOpen: (details) async {
           await customStatement('PRAGMA foreign_keys = ON');

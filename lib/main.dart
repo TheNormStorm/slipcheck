@@ -7,6 +7,7 @@ import 'data/receipt_files.dart';
 import 'data/receipt_repository.dart';
 import 'ocr/receipt_reader.dart';
 import 'ui/app_actions.dart';
+import 'ui/onboarding_screen.dart';
 import 'ui/shell.dart';
 import 'ui/theme/app_theme.dart';
 
@@ -37,7 +38,35 @@ class SlipcheckApp extends StatelessWidget {
       title: 'Slipcheck',
       theme: buildSlipTheme(Brightness.light),
       darkTheme: buildSlipTheme(Brightness.dark),
-      home: AppShell(actions: AppActions(repo, reader)),
+      home: _FirstRun(actions: AppActions(repo, reader)),
     );
   }
+}
+
+/// Onboarding on the first launch, then the app.
+class _FirstRun extends StatefulWidget {
+  const _FirstRun({required this.actions});
+  final AppActions actions;
+
+  @override
+  State<_FirstRun> createState() => _FirstRunState();
+}
+
+class _FirstRunState extends State<_FirstRun> {
+  static const _key = 'onboardingSeen';
+  late final Future<bool> _seen = widget.actions.repo.hasSeen(_key);
+  bool _done = false;
+
+  @override
+  Widget build(BuildContext context) => FutureBuilder(
+        future: _seen,
+        builder: (context, snap) {
+          if (!snap.hasData) return const SizedBox.shrink();
+          if (snap.data! || _done) return AppShell(actions: widget.actions);
+          return OnboardingScreen(onDone: () {
+            widget.actions.repo.markSeen(_key);
+            setState(() => _done = true);
+          });
+        },
+      );
 }
