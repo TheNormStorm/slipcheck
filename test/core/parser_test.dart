@@ -12,6 +12,100 @@ List<String> fixture(String name) =>
     File('test/fixtures/$name.txt').readAsLinesSync();
 
 void main() {
+  group('a Jamaican receipt in dollars with thousands separators', () {
+    void expectCm(ParsedReceipt r) {
+      expect(r.storeName, 'C&M MEATS & GROCERIES');
+      expect(r.date, DateTime(2026, 10, 24));
+      expect((r.subtotalCents, r.taxCents, r.totalCents), (546000, 0, 546000));
+      expect([for (final i in r.items) (i.quantity, i.unitPriceCents, i.lineTotalCents)], [
+        (3.0, 95000, 285000),
+        (3.0, 32000, 96000),
+        (3.0, 55000, 165000),
+      ]);
+      expect(r.itemsSumCents, 546000);
+      expect(r.warnings, isEmpty);
+    }
+
+    test('as read on the emulator (curling, "3e \$320.00/", "Sales Ta")', () {
+      final json = jsonDecode(File('test/fixtures/cm_meats_mlkit.json').readAsStringSync()) as List;
+      expectCm(const ReceiptParser().parse(groupIntoRows([for (final l in json) OcrLine.fromJson(l)])));
+    });
+
+    // A tilted photo puts SPARE RIBS' price on a row other than its name.
+    const head = ['C&M MEATS & GROCERIES', 'Date: 10/24/2026', 'Description Amount', r'MUTTON IMP $2,850.00',
+      r'3 @ $950.00/', 'Manual Weight', r'TURKEY NECK(33LBS) $960.00'];
+    const tail = [r'Sub Total $5,460.00', r'5ales Ta% $0.00', r'Total $5,460.00'];
+    final layouts = {
+      'above the name': [r'3 @ $320.00/', 'Manual Weight', r'$1,650.00', 'SPARE RIBS', r'3 @ $550.00/'],
+      'on the "Manual Weight" row above': [r'3 @ $320.00/', r'Manual Weight $1,650.00', 'SPARE RIBS', r'3 @ $550.00/'],
+      'below the name': [r'3 @ $320.00/', 'Manual Weight', 'SPARE RIBS', r'$1,650.00', r'3 @ $550.00/'],
+      "on the turkey's quantity line": [r'3 @ $320.00/ $1,650.00', 'Manual Weight', 'SPARE RIBS', r'3 @ $550.00/'],
+      'on a misread quantity line, its own read without @': [r'3e $320.00/ $1,650.00', 'Manual Weight', 'SPARE RIBS', r'3 $550.00/'],
+      'with the note above, name and price on one row': [r'3 @ $320.00/', r'Manual Weight SPARE RIBS $1,650.00', r'3 @ $550.00/'],
+      'on the note row, name on its quantity row': [r'3 @ $320.00/', r'Manual Weight $1,650.00', r'SPARE RIBS 3 @ $550.00/'],
+      'on a row of its own, name on its quantity row': [r'3 @ $320.00/', 'Manual Weight', r'$1,650.00', r'SPARE RIBS 3 @ $550.00/'],
+    };
+    for (final MapEntry(key: where, value: middle) in layouts.entries) {
+      test('the price of the last item $where', () {
+        final r = const ReceiptParser().parse([...head, ...middle, 'Manual Weight', ...tail]);
+        expect(r.items.map((i) => i.rawText), ['MUTTON IMP', 'TURKEY NECK(33LBS)', 'SPARE RIBS']);
+        expectCm(r);
+      });
+    }
+
+    test('as read on an iPhone ("\$1,650.0D", "Manual eight", price under name)', () {
+      final r = const ReceiptParser().parse(fixture('cm_meats_iphone'));
+      expect(r.items.map((i) => i.rawText), ['MUTTON IMP', 'TURKEY NECK(33LBS)', 'SPARE RIBS']);
+      expectCm(r);
+    });
+
+    test('a misread 0 in the cents', () {
+      final r = const ReceiptParser().parse(['EGGS 4.O9', 'MILK 1.0D', 'BREAD 3.49 D', 'TOTAL 8.58']);
+      expect(r.items.map((i) => i.lineTotalCents), [409, 100, 349]);
+    });
+
+    test('as read on a phone ("5ales Ta%")', () {
+      final r = const ReceiptParser().parse(fixture('cm_meats_phone'));
+      expectCm(r);
+      expect(r.items.map((i) => i.rawText), ['MUTTON IMP', 'TURKEY NECK(33LBS)', 'SPARE RIBS']);
+    });
+  });
+
+  group('second readings make a misread receipt add up', () {
+    test('the 96-line Market Basket receipt as an iPhone read it', () {
+      final r = const ReceiptParser().parse(fixture('market_basket3_iphone'));
+      expect((r.subtotalCents, r.taxCents, r.totalCents), (36133, 157, 36290));
+      expect(r.items, hasLength(64));
+      expect(r.itemsSumCents, 36133);
+      expect(r.warnings, isEmpty);
+      int price(String name) => r.items.firstWhere((i) => i.rawText.startsWith(name)).lineTotalCents;
+      expect(price('CAB BONELESS RIB'), 1678); // read 16.73, "1 @ 16.78"
+      expect(price('CAB PRIME RIBEYE'), 1949); // read 13.49, "1 @ 19.49"
+      expect(price('93% X-LEAN GR BF 1-2'), 846); // read 6.46, "1 @ 8.46"
+      expect(price('SCALLIONS'), 149); // read "1.4 F"
+      expect(r.corrections, hasLength(4));
+      expect(r.corrections.first, contains('SCALLIONS'));
+    });
+
+    test('nothing changes when the receipt already adds up', () {
+      final r = const ReceiptParser().parse(['BEEF 13.49 F', '1 @ 19.49', 'MILK 4.29 F', 'SUBTOTAL 17.78', 'TOTAL 17.78']);
+      expect(r.items.map((i) => i.lineTotalCents), [1349, 429]);
+      expect(r.corrections, isEmpty);
+    });
+
+    test('two fixes that would both work: neither is guessed', () {
+      final r = const ReceiptParser().parse(
+          ['BEEF 13.49 F', '1 @ 14.49', 'LAMB 13.49 F', '1 @ 14.49', 'SUBTOTAL 27.98', 'TOTAL 27.98']);
+      expect(r.corrections, isEmpty);
+      expect(r.itemsSumCents, 2698);
+    });
+
+    test('"1.5 L" is a size, not a price that lost a digit', () {
+      final r = const ReceiptParser().parse(['WATER 1.5 L', 'MILK 4.29 F', 'TOTAL 4.29']);
+      expect(r.items.map((i) => i.rawText), ['MILK']);
+    });
+  });
+
   group('money', () {
     test('parses common amount formats', () {
       expect(parseCents('4.99'), 499);
@@ -21,6 +115,14 @@ void main() {
       expect(parseCents('1.00-'), -100);
       expect(parseCents('12'), isNull);
       expect(parseCents('1.5'), isNull);
+    });
+    test('reads thousands separators, both ways round', () {
+      expect(parseCents(r'$2,850.00'), 285000);
+      expect(parseCents('123,456.78'), 12345678);
+      expect(parseCents('2.850,00'), 285000);
+      expect(parseCents('1,99'), 199);
+      expect(parseCents('2,850'), isNull);
+      expect(parseTypedCents('2,850.00'), 285000);
     });
     test('parses typed prices', () {
       expect(parseTypedCents('4'), 400);

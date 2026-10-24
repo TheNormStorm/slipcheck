@@ -116,6 +116,7 @@ class ScanSession {
                 'above where photo ${join.page} ends.',
         // A missing total and the items-vs-total check are shown in the
         // review screen's summary instead.
+        for (final c in result.parsed.corrections) 'Fixed so it adds up. $c Check it against the receipt.',
         for (final w in result.parsed.warnings)
           if (w == 'No items found.') w,
         if (result.parsed.date == null)
