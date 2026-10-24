@@ -70,6 +70,8 @@ class AppActions {
 
   /// Reads the photos on the Reading screen, which opens "Check it".
   Future<void> _read(BuildContext context, List<String> paths, {required bool scanned}) async {
+    // The last "Saved!" message is old news once the next receipt is read.
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
     busy.value = true;
     try {
       await Navigator.of(context).push<bool>(MaterialPageRoute(

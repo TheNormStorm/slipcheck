@@ -70,6 +70,8 @@ void main() {
       ];
       final moves = receiptMoves(all, 2);
       expect((moves.up, moves.down), (1, 1));
+      // 4.40 - 4.00 and 2.70 - 3.00 on the two known items that moved.
+      expect((moves.extraCents, moves.known), (10, 3));
     });
 
     test('ignores later receipts and other stores', () {

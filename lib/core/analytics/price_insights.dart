@@ -82,11 +82,13 @@ class PriceChange {
 }
 
 /// Latest price of each product at each store compared with what you
-/// usually paid for it there, biggest moves first. Products bought only once
-/// at a store are skipped.
+/// usually paid for it there, biggest moves first. Products bought on only
+/// one trip to a store are skipped. Several lines of a product on one
+/// receipt count as one purchase (two half chickens of different weights
+/// are not a price change).
 List<PriceChange> priceChanges(List<Purchase> purchases, {double minChange = 0.01}) {
   final byProduct = <(int, String, int?), List<Purchase>>{};
-  for (final p in purchases) {
+  for (final p in mergeByProduct(purchases)) {
     byProduct.putIfAbsent((p.productId, p.unit, p.storeId), () => []).add(p);
   }
   final out = <PriceChange>[];

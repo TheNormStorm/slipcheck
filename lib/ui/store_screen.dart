@@ -1,16 +1,25 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart' show DateFormat;
+import 'package:material_symbols_icons/symbols.dart';
 
 import '../core/analytics/price_insights.dart';
 import '../core/money.dart';
+import '../core/text.dart';
 import '../data/receipt_repository.dart';
 import 'chart_palette.dart';
-import 'charts.dart';
 import 'compare_screen.dart';
+import 'components/kit.dart';
+import 'motion/motion.dart';
 import 'receipt_detail_screen.dart';
+import 'reload_on_change.dart';
+import 'theme/app_theme.dart';
+import 'theme/tokens.dart';
 
-/// One store: what you spend there, its receipts, and what changed price
-/// there. Any two of its receipts can be compared.
+/// One store: a header in its colour, what you spend there, what changed
+/// price there, and its trips. Tick any two trips to compare them.
 class StoreScreen extends StatefulWidget {
   const StoreScreen({super.key, required this.repo, required this.storeId});
   final ReceiptRepository repo;
@@ -21,84 +30,64 @@ class StoreScreen extends StatefulWidget {
 }
 
 class _StoreData {
-  _StoreData(this.store, this.allStores, this.receipts, this.changes, this.slots);
+  _StoreData(this.store, this.allStores, this.receipts, this.changes, this.itemCount, this.slot);
   final StoreSummary store;
   final List<StoreSummary> allStores;
   final List<ReceiptSummary> receipts;
   final List<PriceChange> changes;
-  final Map<String, int> slots;
+
+  /// Different items bought here.
+  final int itemCount;
+  final int? slot;
 }
 
-class _StoreScreenState extends State<StoreScreen> {
-  late Future<_StoreData> _data = _load();
+class _StoreScreenState extends State<StoreScreen> with ReloadOnChange {
+  @override
+  ReceiptRepository get repo => widget.repo;
 
-  Future<_StoreData> _load() async {
-    final stores = await widget.repo.stores();
-    final all = await widget.repo.receipts();
-    final purchases = await widget.repo.purchases();
+  late Future<_StoreData?> _data = _load();
+
+  /// Trips ticked for comparing, at most two.
+  final _picked = <int>{};
+
+  Future<_StoreData?> _load() async {
+    final stores = await repo.stores();
+    final store = stores.where((s) => s.id == widget.storeId).firstOrNull;
+    // Merged into another store, or cleared.
+    if (store == null) return null;
+    final all = await repo.receipts();
+    final here = (await repo.purchases()).where((p) => p.storeId == widget.storeId).toList();
+    final slots = storeSlots(stores.where((s) => s.receiptCount > 0).map((s) => (s.id, s.name)));
     return _StoreData(
-      stores.firstWhere((s) => s.id == widget.storeId),
+      store,
       stores,
       all.where((r) => r.storeId == widget.storeId).toList(),
-      priceChanges(purchases.where((p) => p.storeId == widget.storeId).toList()),
-      storeSlots(all.map((r) => (r.storeId, r.storeName))),
+      priceChanges(here),
+      here.map((p) => p.productId).toSet().length,
+      slots[store.name],
     );
   }
 
-  void _reload() => setState(() {
-        _data = _load();
-      });
+  @override
+  void reload() {
+    _data = _load();
+  }
 
-  /// Compares two of this store's receipts, older first.
-  Future<void> _compare(ReceiptSummary a, ReceiptSummary b) async {
-    final (before, after) = a.purchasedAt.isAfter(b.purchasedAt) ? (b, a) : (a, b);
+  Future<void> _compare(List<ReceiptSummary> receipts) async {
+    final two = receipts.where((r) => _picked.contains(r.id)).toList()
+      ..sort((a, b) => a.purchasedAt.compareTo(b.purchasedAt));
     await Navigator.push(context, MaterialPageRoute(
-      builder: (_) =>
-          CompareScreen(repo: widget.repo, beforeId: before.id, afterId: after.id),
+      builder: (_) => CompareScreen(repo: repo, beforeId: two.first.id, afterId: two.last.id),
     ));
   }
 
-  Future<void> _pickTwo(List<ReceiptSummary> receipts) async {
-    final picked = <ReceiptSummary>{};
-    final ok = await showModalBottomSheet<bool>(
-      context: context,
-      showDragHandle: true,
-      isScrollControlled: true,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setSheet) => SafeArea(
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            const Padding(
-              padding: EdgeInsets.fromLTRB(16, 0, 16, 8),
-              child: Text('Pick two receipts to compare'),
-            ),
-            Flexible(
-              child: ListView(shrinkWrap: true, children: [
-                for (final r in receipts)
-                  CheckboxListTile(
-                    value: picked.contains(r),
-                    title: Text(DateFormat.yMMMEd().format(r.purchasedAt)),
-                    subtitle: Text('${r.itemCount} item${r.itemCount == 1 ? '' : 's'}'),
-                    secondary: Text('\$${formatCents(r.spentCents)}'),
-                    onChanged: (v) => setSheet(() {
-                      if (v == true && picked.length < 2) picked.add(r);
-                      if (v == false) picked.remove(r);
-                    }),
-                  ),
-              ]),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: FilledButton(
-                onPressed: picked.length == 2 ? () => Navigator.pop(context, true) : null,
-                child: const Text('Compare'),
-              ),
-            ),
-          ]),
-        ),
-      ),
-    );
-    if (ok == true && mounted) await _compare(picked.first, picked.last);
-  }
+  void _toggle(int id) => setState(() {
+        if (!_picked.remove(id)) {
+          // A third tick replaces the oldest of the two.
+          if (_picked.length == 2) _picked.remove(_picked.first);
+          _picked.add(id);
+        }
+      });
 
   Future<void> _merge(_StoreData data) async {
     final others = data.allStores.where((s) => s.id != widget.storeId).toList();
@@ -110,127 +99,224 @@ class _StoreScreenState extends State<StoreScreen> {
           for (final s in others)
             SimpleDialogOption(
               onPressed: () => Navigator.pop(context, s),
-              child: Text('${s.name} (${s.receiptCount} receipts)'),
+              child: Text('${s.name} (${plural(s.receiptCount, 'receipt')})'),
             ),
         ],
       ),
     );
     if (target == null) return;
-    await widget.repo.mergeStores(keepId: target.id, mergeId: widget.storeId);
+    await repo.mergeStores(keepId: target.id, mergeId: widget.storeId);
     if (mounted) Navigator.pop(context, true);
   }
 
   @override
   Widget build(BuildContext context) {
+    final t = SlipTokens.of(context);
     return FutureBuilder(
       future: _data,
       builder: (context, snap) {
-        if (!snap.hasData) {
-          return Scaffold(appBar: AppBar(), body: const Center(child: CircularProgressIndicator()));
-        }
-        final data = snap.data!;
-        final theme = Theme.of(context);
-        final palette = ChartPalette.of(context);
-        final receipts = data.receipts;
-        final perTrip = receipts.isEmpty ? 0 : data.store.spentCents ~/ receipts.length;
-
-        Widget stat(String label, String value) => Expanded(
-              child: Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text(label, style: theme.textTheme.bodySmall),
-                    Text(value, style: theme.textTheme.titleLarge),
-                  ]),
-                ),
-              ),
-            );
-
-        return Scaffold(
-          appBar: AppBar(
-            title: Text(data.store.name),
-            actions: [
-              if (data.allStores.length > 1)
-                PopupMenuButton<String>(
-                  onSelected: (_) => _merge(data),
-                  itemBuilder: (_) => const [
-                    PopupMenuItem(value: 'merge', child: Text('Same store as…')),
-                  ],
-                ),
-            ],
-          ),
-          body: ListView(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
-            children: [
-              Row(children: [
-                stat('Spent', '\$${formatCents(data.store.spentCents)}'),
-                const SizedBox(width: 8),
-                stat('Trips', '${receipts.length}'),
-                const SizedBox(width: 8),
-                stat('Per trip', '\$${formatCents(perTrip)}'),
+        final data = snap.data;
+        if (data == null) {
+          return Scaffold(
+            body: SafeArea(
+              child: ListView(padding: const EdgeInsets.all(14), children: [
+                for (final h in <double>[140, 70, 64, 64])
+                  Padding(padding: const EdgeInsets.only(bottom: 10), child: Skeleton(height: h, radius: t.rRow)),
               ]),
-              if (receipts.length >= 2) ...[
-                const SizedBox(height: 12),
-                Row(children: [
-                  Expanded(
-                    child: FilledButton.icon(
-                      onPressed: () => _compare(receipts[1], receipts[0]),
-                      icon: const Icon(Icons.compare_arrows),
-                      label: const Text('Last two trips'),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () => _pickTwo(receipts),
-                      child: const Text('Pick two'),
-                    ),
-                  ),
-                ]),
-              ],
-              const SizedBox(height: 24),
-              Text('Spending by month', style: theme.textTheme.titleMedium),
-              const SizedBox(height: 8),
-              MonthlySpendingChart(receipts: receipts, slots: data.slots),
-              if (data.changes.isNotEmpty) ...[
-                const SizedBox(height: 24),
-                Text('Price changes here', style: theme.textTheme.titleMedium),
-                for (final c in data.changes.take(5))
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    dense: true,
-                    title: Text(c.name),
-                    subtitle: Text('usually \$${formatCents(c.typicalUnitPrice.round())}'
-                        ' · now \$${formatCents(c.latest.unitPrice.round())}'),
-                    trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-                      Icon(c.changeFraction > 0 ? Icons.arrow_upward : Icons.arrow_downward,
-                          size: 16,
-                          color: c.changeFraction > 0 ? palette.badText : palette.goodText),
-                      Text('${(c.changeFraction.abs() * 100).toStringAsFixed(1)}%',
-                          style: TextStyle(
-                              color: c.changeFraction > 0 ? palette.badText : palette.goodText)),
+            ),
+          );
+        }
+        final receipts = data.receipts;
+        final picked = receipts.where((r) => _picked.contains(r.id)).length;
+        return AnnotatedRegion<SystemUiOverlayStyle>(
+          value: SystemUiOverlayStyle.light,
+          child: Scaffold(
+          body: ListView(
+            padding: EdgeInsets.zero,
+            children: [
+              _Header(data: data, onMerge: data.allStores.length > 1 ? () => _merge(data) : null),
+              Padding(
+                // Room for the tiles hanging 34 px below the header.
+                padding: const EdgeInsets.fromLTRB(14, 34 + 14, 14, 24),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                  if (data.changes.isNotEmpty) ...[
+                    Text('Price changes here', style: slipText(15, 900, color: t.ink)),
+                    const SizedBox(height: 8),
+                    Wrap(spacing: 6, runSpacing: 6, children: [
+                      for (final (i, c) in data.changes.take(8).indexed)
+                        PopIn(
+                          delayMs: 60 * i,
+                          child: Semantics(
+                            label: '${c.name} ${c.changeFraction > 0 ? 'up' : 'down'} '
+                                '${(c.changeFraction.abs() * 100).round()} percent, '
+                                'usually ${formatCents(c.typicalUnitPrice.round())}',
+                            excludeSemantics: true,
+                            child: TrendChip(
+                              label: '${sentenceCase(c.name)} ${c.changeFraction > 0 ? '↑' : '↓'} '
+                                  '${math.max(1, (c.changeFraction.abs() * 100).round())}%',
+                              trend: c.changeFraction > 0 ? Trend.up : Trend.down,
+                            ),
+                          ),
+                        ),
                     ]),
+                    const SizedBox(height: 6),
+                  ],
+                  SectionTitle(
+                    'Trips',
+                    trailing: receipts.length >= 2
+                        ? Text(picked == 2 ? 'Ready to compare' : 'Pick 2 to compare',
+                            style: slipText(12.5, 900, color: t.accText))
+                        : null,
                   ),
-              ],
-              const SizedBox(height: 24),
-              Text('Receipts', style: theme.textTheme.titleMedium),
-              for (final r in receipts)
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: Text(DateFormat.yMMMEd().format(r.purchasedAt)),
-                  subtitle: Text('${r.itemCount} item${r.itemCount == 1 ? '' : 's'}'),
-                  trailing: Text('\$${formatCents(r.spentCents)}'),
-                  onTap: () async {
-                    await Navigator.push(context, MaterialPageRoute(
-                      builder: (_) => ReceiptDetailScreen(repo: widget.repo, receiptId: r.id),
-                    ));
-                    _reload();
-                  },
-                ),
+                  for (final (i, r) in receipts.indexed)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Rise(
+                        index: i.clamp(0, 10),
+                        child: _TripRow(
+                          receipt: r,
+                          picked: _picked.contains(r.id),
+                          canPick: receipts.length >= 2,
+                          onPick: () => _toggle(r.id),
+                          onOpen: () => Navigator.push(context, MaterialPageRoute(
+                            builder: (_) => ReceiptDetailScreen(repo: repo, receiptId: r.id),
+                          )),
+                        ),
+                      ),
+                    ),
+                ]),
+              ),
             ],
           ),
+          bottomNavigationBar: picked == 2
+              ? SafeArea(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(14, 8, 14, 10),
+                    child: SizedBox(
+                      height: 56,
+                      child: FilledButton.icon(
+                        onPressed: () => _compare(receipts),
+                        icon: const SlipIcon(Symbols.compare_arrows_rounded),
+                        label: const Text('Compare these two'),
+                      ),
+                    ),
+                  ),
+                )
+              : null,
+        ),
         );
       },
+    );
+  }
+}
+
+/// The coloured band with the store's name, and three tiles overlapping it.
+class _Header extends StatelessWidget {
+  const _Header({required this.data, this.onMerge});
+  final _StoreData data;
+  final VoidCallback? onMerge;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = SlipTokens.of(context);
+    final color = ChartPalette.of(context).series(data.slot ?? 8);
+    final s = data.store;
+    final trips = data.receipts.length;
+    final perTrip = trips == 0 ? 0 : s.spentCents ~/ trips;
+    const onBand = Colors.white;
+    Widget tile(String label, String value) => Expanded(
+          child: StatTile(label: label, value: Text(value, style: slipText(18, 900, color: t.ink, tabular: true))),
+        );
+    return Stack(clipBehavior: Clip.none, children: [
+      Container(
+        color: color,
+        padding: EdgeInsets.fromLTRB(14, MediaQuery.paddingOf(context).top + 8, 14, 52),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            CircleAction(
+              icon: Symbols.arrow_back_rounded,
+              tooltip: 'Back',
+              color: Colors.white.withValues(alpha: .22),
+              iconColor: onBand,
+              onTap: () => Navigator.maybePop(context),
+            ),
+            const Spacer(),
+            if (onMerge != null)
+              PopupMenuButton<String>(
+                tooltip: 'More',
+                iconColor: onBand,
+                onSelected: (_) => onMerge!(),
+                itemBuilder: (_) => const [PopupMenuItem(value: 'merge', child: Text('Same store as…'))],
+              ),
+          ]),
+          const SizedBox(height: 14),
+          Text(s.name, style: slipText(24, 900, color: onBand)),
+          Text(
+            '${plural(trips, 'trip')}${s.lastVisit == null ? '' : ' · last ${DateFormat.MMMd().format(s.lastVisit!)}'}',
+            style: slipText(13, 800, color: onBand),
+          ),
+        ]),
+      ),
+      Positioned(
+        left: 14,
+        right: 14,
+        bottom: -34,
+        child: Row(children: [
+          tile('Spent', formatCents(s.spentCents)),
+          const SizedBox(width: 8),
+          tile('Avg trip', formatCents(perTrip)),
+          const SizedBox(width: 8),
+          tile('Items', '${data.itemCount}'),
+        ]),
+      ),
+    ]);
+  }
+}
+
+class _TripRow extends StatelessWidget {
+  const _TripRow({
+    required this.receipt,
+    required this.picked,
+    required this.canPick,
+    required this.onPick,
+    required this.onOpen,
+  });
+  final ReceiptSummary receipt;
+  final bool picked, canPick;
+  final VoidCallback onPick, onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = SlipTokens.of(context);
+    final r = receipt;
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 180),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(t.rRow),
+        border: Border.all(color: picked ? t.acc : Colors.transparent, width: 2),
+      ),
+      child: SlipCard(
+        radius: t.rRow - 2,
+        padding: const EdgeInsets.fromLTRB(4, 6, 14, 6),
+        onTap: onOpen,
+        child: Row(children: [
+          if (canPick)
+            Semantics(
+              checked: picked,
+              label: 'Pick ${DateFormat.MMMd().format(r.purchasedAt)} to compare',
+              child: Checkbox(value: picked, onChanged: (_) => onPick(), shape: const CircleBorder()),
+            )
+          else
+            const SizedBox(width: 10),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(DateFormat('EEE, MMM d').format(r.purchasedAt), style: slipText(15, 900, color: t.ink)),
+              Text(plural(r.itemCount, 'item'), style: slipText(12.5, 700, color: t.ink2)),
+            ]),
+          ),
+          Text(formatCents(r.spentCents), style: slipText(15, 900, color: t.ink, tabular: true)),
+        ]),
+      ),
     );
   }
 }

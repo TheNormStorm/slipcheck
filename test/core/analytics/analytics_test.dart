@@ -157,6 +157,16 @@ void main() {
       expect(changes.single.typicalUnitPrice, 410);
       expect(changes.single.changeFraction, closeTo(500 / 410 - 1, 1e-9));
     });
+
+    test('lines of one product on one receipt are one purchase', () {
+      final changes = priceChanges([
+        buy(1, 1, 'HALF CHICKEN', 1, 790),
+        buy(1, 1, 'HALF CHICKEN', 1, 806),
+        buy(2, 1, 'HALF CHICKEN', 1, 763),
+        buy(2, 1, 'HALF CHICKEN', 1, 833),
+      ]);
+      expect(changes, isEmpty);
+    });
   });
 
   group('storeComparison', () {

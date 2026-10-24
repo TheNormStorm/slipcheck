@@ -1,4 +1,5 @@
 import 'package:drift/drift.dart';
+import 'package:intl/intl.dart' show DateFormat;
 
 
 import '../core/analytics/purchase.dart';
@@ -112,6 +113,36 @@ class ReceiptDetail {
   final List<Purchase> purchases;
   final List<String> imagePaths;
   final int? subtotalCents;
+
+  /// The receipt as plain text for sharing: store, date, each line and the
+  /// totals. Built only from the saved lines, so no card details and no
+  /// photo can go with it.
+  String asText() {
+    final s = summary;
+    String row(String name, int cents) {
+      final amount = formatCents(cents);
+      return '${name.padRight(32 - amount.length)} $amount';
+    }
+
+    return [
+      s.storeName ?? 'Receipt',
+      DateFormat('EEE, MMM d, y').format(s.purchasedAt),
+      '',
+      for (final l in lines) ...[
+        row(l.name, l.netCents),
+        if (l.quantity != 1 || l.unit != 'each')
+          '  ${l.quantity == l.quantity.roundToDouble() ? l.quantity.toInt() : l.quantity} '
+              '${l.unit == 'each' ? '×' : l.unit}',
+        if (l.discountCents > 0) '  saved ${formatCents(l.discountCents)}',
+      ],
+      '',
+      if (subtotalCents != null) row('Subtotal', subtotalCents!),
+      if (s.taxCents != null) row('Tax', s.taxCents!),
+      row('Total', s.spentCents),
+      '',
+      'Shared from Slipcheck',
+    ].join('\n');
+  }
 }
 
 class ProductSummary {
@@ -551,6 +582,23 @@ class ReceiptRepository {
       purchases: await purchases(receiptId: id),
       imagePaths: [for (final i in images) i.path],
     );
+  }
+
+  /// Receipts with a line whose printed text or saved item name contains
+  /// [query], ignoring case.
+  Future<Set<int>> receiptsWithItem(String query) async {
+    final q = query.trim().toLowerCase();
+    if (q.isEmpty) return {};
+    // LIKE wildcards in what was typed are searched for literally.
+    final pattern = '%${q.replaceAll(r'\', r'\\').replaceAll('%', r'\%').replaceAll('_', r'\_')}%';
+    final rows = await db.customSelect(
+      'SELECT DISTINCT l.receipt_id AS id FROM line_items l '
+      'LEFT JOIN products p ON p.id = l.product_id '
+      "WHERE lower(l.raw_text) LIKE ?1 ESCAPE '\\' OR lower(p.display_name) LIKE ?1 ESCAPE '\\'",
+      variables: [Variable.withString(pattern)],
+      readsFrom: {db.lineItems, db.products},
+    ).get();
+    return {for (final r in rows) r.read<int>('id')};
   }
 
   /// Every purchase of a known product, oldest first; or one receipt's.

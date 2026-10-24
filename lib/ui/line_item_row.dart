@@ -61,6 +61,7 @@ class LineItemRow extends StatelessWidget {
     this.note,
     this.vs,
     this.matching = false,
+    this.chip,
   });
 
   final DraftLine line;
@@ -81,6 +82,9 @@ class LineItemRow extends StatelessWidget {
 
   /// Known products are still loading.
   final bool matching;
+
+  /// A small chip before the amount ("+5%", "usual"), for read-only lists.
+  final Widget? chip;
 
   @override
   Widget build(BuildContext context) {
@@ -118,6 +122,10 @@ class LineItemRow extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 12),
+            if (chip != null) ...[
+              Padding(padding: const EdgeInsets.only(top: 1), child: chip!),
+              const SizedBox(width: 10),
+            ],
             Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [

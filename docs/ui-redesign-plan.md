@@ -94,7 +94,7 @@ in cents, parts of a comparison add up exactly).
 
 ## Phases
 
-Status: phases 1 and 2 are done.
+Status: phases 1, 2 and 3 are done.
 
 Each phase ends with:
 - `flutter analyze` clean and `flutter test` green;

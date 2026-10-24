@@ -47,28 +47,43 @@ class VsUsual {
   }
 }
 
-/// How many prices on one receipt went up or down against what you usually
-/// paid at that store before it.
+/// How one receipt's prices compare with what you usually paid at that
+/// store before it.
 class ReceiptMoves {
-  const ReceiptMoves(this.up, this.down);
+  const ReceiptMoves(this.up, this.down, {this.extraCents = 0, this.known = 0});
+
+  /// How many prices went up or down.
   final int up, down;
+
+  /// What the receipt's known items cost beyond their usual prices (negative:
+  /// less), and how many items had a usual price to compare with.
+  final int extraCents, known;
+
   static const none = ReceiptMoves(0, 0);
 }
 
-/// Compares receipt [receiptId]'s purchases in [all] with the usual prices
-/// from the other receipts dated no later than it.
+/// The usual prices before receipt [receiptId]: from the other receipts in
+/// [all] dated no later than it.
+UsualPrices usualBefore(List<Purchase> all, int receiptId) {
+  final date = all.where((p) => p.receiptId == receiptId).firstOrNull?.date;
+  return UsualPrices(mergeByProduct(
+      all.where((p) => p.receiptId != receiptId && (date == null || !p.date.isAfter(date)))));
+}
+
+/// Compares receipt [receiptId]'s purchases in [all] with [usualBefore].
 ReceiptMoves receiptMoves(List<Purchase> all, int receiptId) {
   final mine = mergeByProduct(all.where((p) => p.receiptId == receiptId));
   if (mine.isEmpty) return ReceiptMoves.none;
-  final date = mine.first.date;
-  final usual = UsualPrices(
-      mergeByProduct(all.where((p) => p.receiptId != receiptId && !p.date.isAfter(date))));
-  var up = 0, down = 0;
+  final usual = usualBefore(all, receiptId);
+  var up = 0, down = 0, known = 0;
+  var extra = 0.0;
   for (final p in mine) {
     final vs = usual.compare(p.productId, p.unit, p.storeId, p.unitPrice);
     if (vs == null) continue;
+    known++;
+    extra += p.netCents - vs.usualUnitPrice * p.quantity;
     if (vs.isUp) up++;
     if (vs.isDown) down++;
   }
-  return ReceiptMoves(up, down);
+  return ReceiptMoves(up, down, extraCents: extra.round(), known: known);
 }

@@ -45,6 +45,8 @@ class _AppShellState extends State<AppShell> {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(
+        // With an action it would otherwise stay until dismissed.
+        persist: false,
         content: Text('Saved! ${plural(note.itemCount, 'item')} tracked.'
             '${up > 0 ? ' ${plural(up, 'price')} went up.' : ''}'),
         action: SnackBarAction(

@@ -49,10 +49,26 @@ void main() {
 
   testWidgets('compare explains the difference', (tester) async {
     await pump(tester, CompareScreen(repo: repo, beforeId: first, afterId: second));
-    expect(find.text('You spent \$20.33 more on the second receipt.'), findsOneWidget);
+    expect(find.text('+20.33'), findsOneWidget);
+    expect(find.text('more this trip. Mostly steak.'), findsOneWidget);
     expect(find.textContaining('+\$19.98 from 1 item only on the second receipt'), findsOneWidget);
-    expect(find.text('Price changes'), findsOneWidget);
-    expect(find.text('+\$0.60'), findsWidgets); // milk price effect
+    // All five parts, even the ones that are zero, so they visibly add up.
+    for (final part in ['Only on Oct 20 · steak', 'Only on Sep 12 · bread', 'Price changes', 'Bought more or less', 'Tax']) {
+      expect(find.text(part), findsOneWidget, reason: part);
+    }
+    expect(find.text('+0.60'), findsWidgets); // milk price effect
+  });
+
+  testWidgets('two receipts from one day are told apart', (tester) async {
+    final again = await repo.saveReceipt(ReceiptDraft(
+      storeName: 'Market Basket',
+      purchasedAt: DateTime(2026, 9, 12),
+      lines: [DraftLine(name: 'MILK 2% 1L', lineTotalCents: 469), DraftLine(name: 'JAM', lineTotalCents: 299)],
+      taxCents: 0,
+    ));
+    await pump(tester, CompareScreen(repo: repo, beforeId: first, afterId: again));
+    expect(find.text('Only on the second receipt · jam'), findsOneWidget);
+    expect(find.textContaining('Only on the first receipt'), findsOneWidget);
   });
 
   testWidgets('analytics shows spending, index and store comparison', (tester) async {

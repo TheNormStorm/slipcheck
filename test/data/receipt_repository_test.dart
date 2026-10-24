@@ -216,6 +216,49 @@ void main() {
     });
   });
 
+  test('a receipt shared as text has its lines and totals, and nothing else', () async {
+    final id = await repo.saveReceipt(ReceiptDraft(
+      storeName: 'Market Basket',
+      purchasedAt: DateTime(2026, 10, 23),
+      lines: [
+        DraftLine(name: 'MILK 2% 1GAL', lineTotalCents: 429),
+        DraftLine(name: 'BANANAS', quantity: 2.11, unit: 'lb', lineTotalCents: 146),
+        DraftLine(name: 'CHEDDAR', lineTotalCents: 399, discountCents: 20),
+      ],
+      subtotalCents: 954,
+      taxCents: 0,
+      totalCents: 954,
+      // What was read, card section included as an old receipt might have.
+      ocrText: 'MILK 2% 1GAL 4.29\nVISA ************4417',
+      imagePaths: ['/photos/1.jpg'],
+    ));
+    final text = (await repo.receipt(id)).asText();
+    expect(text.split('\n').take(4), ['Market Basket', 'Fri, Oct 23, 2026', '', startsWith('MILK 2% 1GAL')]);
+    expect(text, contains('  2.11 lb'));
+    expect(text, contains('  saved 0.20'));
+    expect(text, contains(RegExp(r'Total +9\.54')));
+    expect(text, isNot(contains('4417')));
+    expect(text, isNot(contains('.jpg')));
+  });
+
+  test('finds receipts by item, printed or renamed, ignoring case', () async {
+    final a = await repo.saveReceipt(draft('Market Basket', DateTime(2026, 9, 1), [
+      DraftLine(name: 'MB LG BROWN CAGE FREE 18PK', lineTotalCents: 897),
+    ]));
+    final b = await repo.saveReceipt(draft('Whole Foods', DateTime(2026, 9, 2), [
+      DraftLine(name: '100% JUICE', lineTotalCents: 499),
+    ]));
+    final eggs = (await repo.products()).firstWhere((p) => p.displayName.startsWith('MB LG'));
+    await repo.renameProduct(eggs.id, 'Brown eggs 18pk');
+    expect(await repo.receiptsWithItem('cage free'), {a});
+    expect(await repo.receiptsWithItem('EGGS'), {a});
+    expect(await repo.receiptsWithItem('100%'), {b});
+    expect(await repo.receiptsWithItem('0%'), {b});
+    expect(await repo.receiptsWithItem('%'), {b});
+    expect(await repo.receiptsWithItem('steak'), isEmpty);
+    expect(await repo.receiptsWithItem('  '), isEmpty);
+  });
+
   group('duplicates and editing', () {
     ReceiptDraft mb({int? total, List<DraftLine>? lines}) => ReceiptDraft(
           storeName: 'Market Basket',
