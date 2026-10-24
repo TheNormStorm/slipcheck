@@ -201,4 +201,22 @@ void main() {
     await tester.pumpAndSettle();
     expect(await tester.runAsync(repo.receipts), isEmpty);
   });
+
+  testWidgets('a misread amount is suggested and fixed in one tap', (tester) async {
+    await show(tester, ReceiptDraft(
+      storeName: 'Market Basket',
+      purchasedAt: DateTime(2026, 10, 22),
+      lines: [
+        DraftLine(name: '93% X-LEAN', lineTotalCents: 846),
+        DraftLine(name: '93% X-LEAN', lineTotalCents: 646),
+      ],
+      subtotalCents: 1692,
+    ));
+    expect(find.text('Why it might not add up'), findsOneWidget);
+    expect(find.text('93% x-lean may be 8.46, not 6.46.'), findsOneWidget);
+    await tester.tap(find.text('Fix'));
+    await tester.pumpAndSettle();
+    expect(find.text('Matches subtotal 16.92'), findsOneWidget);
+    expect(find.text('Why it might not add up'), findsNothing);
+  });
 }

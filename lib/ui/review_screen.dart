@@ -3,12 +3,15 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart' show DateFormat;
 import 'package:material_symbols_icons/symbols.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../core/analytics/purchase.dart';
 import '../core/analytics/vs_usual.dart';
 import '../core/matching/product_matcher.dart';
 import '../core/money.dart';
 import '../core/text.dart';
+import '../core/parsing/mismatch.dart';
+import '../data/receipt_files.dart';
 import '../data/receipt_repository.dart';
 import 'components/kit.dart';
 import 'components/dialogs.dart';
@@ -397,6 +400,43 @@ class _ReviewScreenState extends State<ReviewScreen> {
     onSaved?.call(shown ?? note);
   }
 
+  /// Applies a suggestion that makes the items add up.
+  Future<void> _applyFix(Fix fix) async {
+    switch (fix) {
+      case ChangeAmount(:final index, :final cents):
+        final line = draft.lines[index];
+        setState(() {
+          line
+            ..lineTotalCents = cents + line.discountCents
+            ..unitPriceCents = null;
+        });
+      case ReadTwice(:final index):
+        setState(() => draft.lines.removeAt(index));
+      case MissingLine(:final cents):
+        final line = DraftLine(name: '', lineTotalCents: cents);
+        setState(() => draft.lines.add(line));
+        await _editLine(line);
+    }
+  }
+
+  /// Shares what OCR read from each photo, card section already removed,
+  /// so a receipt that reads badly can be looked at elsewhere. The user
+  /// picks where it goes.
+  Future<void> _sendDetails() async {
+    final files = [
+      for (final page in widget.session!.pages)
+        if (File(ReceiptFiles.ocrPathFor(page.imagePath)).existsSync()) XFile(ReceiptFiles.ocrPathFor(page.imagePath)),
+    ];
+    if (files.isEmpty) return;
+    await SharePlus.instance.share(ShareParams(
+      files: files,
+      title: 'Slipcheck reading details',
+      subject: 'Slipcheck reading details',
+      text: 'What Slipcheck read from ${plural(files.length, 'photo')} of a ${draft.storeName} receipt. '
+          'Card details are already removed.',
+    ));
+  }
+
   Future<void> _editLine(DraftLine line) async {
     final id = _productOf(line, _match(line));
     final result = await showModalBottomSheet<String>(
@@ -497,6 +537,15 @@ class _ReviewScreenState extends State<ReviewScreen> {
                   const SizedBox(height: 8),
                   _Warning(text: note, onTap: _reading ? null : _photosSheet),
                 ],
+                if (_matcher != null && _expected != null && _expected != _itemsSum && draft.lines.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  _Suggestions(
+                    lines: draft.lines,
+                    fixes: suggestFixes([for (final l in draft.lines) l.netCents], _expected!),
+                    onApply: _applyFix,
+                    onSendDetails: session == null ? null : _sendDetails,
+                  ),
+                ],
                 const SizedBox(height: 10),
                 SlipCard(
                   padding: EdgeInsets.zero,
@@ -526,6 +575,15 @@ class _ReviewScreenState extends State<ReviewScreen> {
                 ),
                 const SizedBox(height: 10),
                 _TotalsRow(draft: draft, onTap: _editTotals),
+                if (session != null)
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton.icon(
+                      onPressed: _sendDetails,
+                      icon: const SlipIcon(Symbols.ios_share_rounded, size: 18),
+                      label: const Text('Send reading details'),
+                    ),
+                  ),
                 if (draft.ocrText != null) ...[
                   const SizedBox(height: 6),
                   Theme(
@@ -767,6 +825,68 @@ class _TotalsRow extends StatelessWidget {
           ]),
         ),
         SlipIcon(Symbols.edit_rounded, size: 20, color: t.ink2),
+      ]),
+    );
+  }
+}
+
+/// What probably made the items not add up, each with a one-tap fix.
+class _Suggestions extends StatelessWidget {
+  const _Suggestions({required this.lines, required this.fixes, required this.onApply, this.onSendDetails});
+  final List<DraftLine> lines;
+  final List<Fix> fixes;
+  final ValueChanged<Fix> onApply;
+  final VoidCallback? onSendDetails;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = SlipTokens.of(context);
+    String name(int i) => lines[i].name.trim().isEmpty ? 'Line ${i + 1}' : sentenceCase(lines[i].name);
+    Widget row(String text, String action, Fix fix) => Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: Row(children: [
+            Expanded(child: Text(text, style: slipText(13, 800, color: t.ink))),
+            const SizedBox(width: 8),
+            FilledButton(
+              style: FilledButton.styleFrom(
+                minimumSize: const Size(0, 34),
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                textStyle: slipText(12.5, 900),
+              ),
+              onPressed: () => onApply(fix),
+              child: Text(action),
+            ),
+          ]),
+        );
+    return SlipCard(
+      radius: t.rRow,
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          SlipIcon(Symbols.troubleshoot_rounded, size: 18, color: t.accText),
+          const SizedBox(width: 8),
+          Expanded(child: Text('Why it might not add up', style: slipText(13.5, 900, color: t.ink))),
+        ]),
+        for (final fix in fixes)
+          switch (fix) {
+            ChangeAmount(:final index, :final cents) => row(
+                '${name(index)} may be ${formatCents(cents)}, not ${formatCents(lines[index].netCents)}.', 'Fix', fix),
+            ReadTwice(:final index) => row('${name(index)} may have been read twice.', 'Remove', fix),
+            MissingLine(:final cents) => row('A line of ${formatCents(cents)} may be missing.', 'Add', fix),
+          },
+        if (fixes.isEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text('No single line explains it. Check the amounts against the receipt.',
+                style: slipText(12.5, 700, color: t.ink2)),
+          ),
+        if (onSendDetails != null)
+          TextButton.icon(
+            style: TextButton.styleFrom(padding: EdgeInsets.zero, visualDensity: VisualDensity.compact),
+            onPressed: onSendDetails,
+            icon: const SlipIcon(Symbols.ios_share_rounded, size: 16),
+            label: const Text('Send reading details'),
+          ),
       ]),
     );
   }
