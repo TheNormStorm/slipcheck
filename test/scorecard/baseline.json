@@ -1,0 +1,19 @@
+{
+  "market_basket3_top.json+market_basket3_middle.json+market_basket3_bottom.json": "exact",
+  "market_basket3_bottom.json+market_basket3_top.json+market_basket3_middle.json": "exact",
+  "market_basket3_top.json+market_basket3_middle.json+market_basket3_bottom.json / 3 photos, phone turned 12°": "exact",
+  "market_basket3_top.json+market_basket3_middle.json+market_basket3_bottom.json / 3 photos, phone tipped towards the top": "exact",
+  "market_basket3_top.json+market_basket3_middle.json+market_basket3_bottom.json / 3 photos, receipt curling": "exact",
+  "market_basket3_top.json+market_basket3_middle.json+market_basket3_bottom.json / 3 photos, turned, tipped and curling": "exact",
+  "market_basket3_iphone.txt": "exact",
+  "market_basket2_bottom.json+market_basket2_top.json": "off",
+  "market_basket_mlkit.json": "unchecked",
+  "market_basket_part1.json+market_basket_part2.json+market_basket_part3.json": "unchecked",
+  "cm_meats_mlkit.json": "exact",
+  "cm_meats_phone.txt": "exact",
+  "cm_meats_iphone.txt": "exact",
+  "grocery_basic.txt": "exact",
+  "mlkit_grocery_basic.txt": "exact",
+  "qty_after_item.txt": "exact",
+  "dayfirst_comma.txt": "exact"
+}

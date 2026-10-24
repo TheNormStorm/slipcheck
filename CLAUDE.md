@@ -39,6 +39,15 @@ Do not add cloud OCR/LLM services without asking.
 - After changing tables in `database.dart`: `dart run build_runner build`, bump
   `schemaVersion`, add a migration step.
 
+## Receipt scorecard
+- `test/scorecard/scorecard_test.dart` reads every saved receipt (photos'
+  ML Kit JSON, or a phone's Text as read) the way the app does and scores it
+  against what the paper receipt says. It runs with `flutter test` and fails
+  if a reading that was exact no longer is. Report: `docs/scorecard.md`.
+- New receipt that reads badly: add its fixture (names and card section
+  removed) and a `Reading` with the printed totals, then
+  `UPDATE_SCORECARD=1 flutter test test/scorecard` to record the result.
+
 ## Commands
 - `flutter test` — must pass before committing.
 - `flutter analyze` — keep clean.
