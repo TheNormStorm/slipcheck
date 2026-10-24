@@ -8,13 +8,13 @@ import '../core/analytics/insights.dart';
 import '../core/analytics/price_insights.dart';
 import '../core/analytics/purchase.dart';
 import '../core/categories.dart';
-import '../core/money.dart';
 import '../core/text.dart';
 import '../data/receipt_repository.dart';
 import 'chart_palette.dart';
 import 'charts.dart';
 import 'components/brand.dart';
 import 'components/kit.dart';
+import 'currency_scope.dart';
 import 'motion/motion.dart';
 import 'reload_on_change.dart';
 import 'theme/app_theme.dart';
@@ -49,6 +49,10 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> with ReloadOnChange {
 
   late Future<_Data> _data = _load();
   InsightRange _range = InsightRange.threeMonths;
+
+  /// The currency shown, when receipts are in more than one; null for the
+  /// main one.
+  String? _currency;
 
   @override
   void reload() {
@@ -96,11 +100,18 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> with ReloadOnChange {
                 ),
               ]);
             }
-            final inRange = data.purchases.where((p) => _range.contains(p.date, now)).toList();
-            final receiptsInRange = data.receipts.where((r) => _range.contains(r.purchasedAt, now)).toList();
-            final index = indexFor(personalPriceIndex(data.purchases), _range, now);
-            final moves = priceChanges(data.purchases).where((c) => _range.contains(c.latest.date, now)).toList();
-            final stores = storeComparison(data.purchases);
+            // One currency at a time: amounts in two are never added up.
+            final main = CurrencyScope.mainOf(context);
+            final currencies = {for (final r in data.receipts) r.currency}.toList()
+              ..sort((a, b) => a == main ? -1 : b == main ? 1 : a.compareTo(b));
+            final shown = currencies.contains(_currency) ? _currency! : currencies.first;
+            final receipts = data.receipts.where((r) => r.currency == shown).toList();
+            final purchases = data.purchases.where((p) => p.currency == shown).toList();
+            final inRange = purchases.where((p) => _range.contains(p.date, now)).toList();
+            final receiptsInRange = receipts.where((r) => _range.contains(r.purchasedAt, now)).toList();
+            final index = indexFor(personalPriceIndex(purchases), _range, now);
+            final moves = priceChanges(purchases).where((c) => _range.contains(c.latest.date, now)).toList();
+            final stores = storeComparison(purchases);
             final slots = storeSlots(data.receipts.map((r) => (r.storeId, r.storeName)));
             final tip = _tip(stores, moves);
             var i = 0;
@@ -112,9 +123,18 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> with ReloadOnChange {
               padding: const EdgeInsets.fromLTRB(14, 10, 14, 24),
               children: [
                 ...header,
+                if (currencies.length > 1) ...[
+                  _CurrencyChips(
+                    currencies: currencies,
+                    value: shown,
+                    onChanged: (c) => setState(() => _currency = c),
+                  ),
+                  const SizedBox(height: 12),
+                ],
                 rise(_IndexCard(points: index, range: _range)),
-                rise(_MovesCard(moves: moves)),
+                rise(_MovesCard(moves: moves, currency: shown)),
                 rise(_CategoryCard(
+                  currency: shown,
                   spend: spendByCategory(inRange, data.categories),
                   label: _range == InsightRange.thisMonth ? DateFormat.MMMM().format(now) : _range.label,
                 )),
@@ -123,7 +143,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> with ReloadOnChange {
                     title: 'Spending by month',
                     child: MonthlySpendingChart(receipts: receiptsInRange, slots: slots),
                   )),
-                if (stores.isNotEmpty) rise(_StoresCard(stores: stores, slots: slots)),
+                if (stores.isNotEmpty) rise(_StoresCard(stores: stores, slots: slots, currency: shown)),
                 if (tip != null) rise(_TipCard(text: tip)),
               ],
             );
@@ -276,8 +296,9 @@ class _IndexCard extends StatelessWidget {
 
 /// The biggest price moves, each with a bar that grows in.
 class _MovesCard extends StatelessWidget {
-  const _MovesCard({required this.moves});
+  const _MovesCard({required this.moves, required this.currency});
   final List<PriceChange> moves;
+  final String currency;
 
   @override
   Widget build(BuildContext context) {
@@ -300,8 +321,8 @@ class _MovesCard extends StatelessWidget {
             final per = m.unit == 'each' ? '' : '/${m.unit}';
             final pct = '${up ? '+' : '−'}${math.max(1, (m.changeFraction.abs() * 100).round())}%';
             return Semantics(
-              label: '${m.name}: ${up ? 'up' : 'down'} $pct, from ${formatCents(m.typicalUnitPrice.round())} '
-                  'to ${formatCents(m.latest.unitPrice.round())}',
+              label: '${m.name}: ${up ? 'up' : 'down'} $pct, from ${money(context, m.typicalUnitPrice.round(), currency)} '
+                  'to ${money(context, m.latest.unitPrice.round(), currency)}',
               excludeSemantics: true,
               child: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 6),
@@ -313,7 +334,7 @@ class _MovesCard extends StatelessWidget {
                           maxLines: 1, overflow: TextOverflow.ellipsis, style: slipText(13.5, 900, color: t.ink)),
                       Text(
                         '${m.latest.storeName ?? ''}${m.latest.storeName == null ? '' : ' · '}'
-                        '${formatCents(m.typicalUnitPrice.round())} → ${formatCents(m.latest.unitPrice.round())}$per',
+                        '${money(context, m.typicalUnitPrice.round(), currency)} → ${money(context, m.latest.unitPrice.round(), currency)}$per',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: slipText(11.5, 700, color: t.ink2, tabular: true),
@@ -360,9 +381,10 @@ class _MovesCard extends StatelessWidget {
 /// amounts. The six largest get their own colour; the rest are "Everything
 /// else".
 class _CategoryCard extends StatelessWidget {
-  const _CategoryCard({required this.spend, required this.label});
+  const _CategoryCard({required this.spend, required this.label, required this.currency});
   final List<(Category, int)> spend;
   final String label;
+  final String currency;
 
   @override
   Widget build(BuildContext context) {
@@ -383,7 +405,7 @@ class _CategoryCard extends StatelessWidget {
     ];
     return _Card(
       title: 'By category',
-      trailing: Text('$label ${formatCents(total)}', style: slipText(12.5, 900, color: t.ink2, tabular: true)),
+      trailing: Text('$label ${money(context, total, currency)}', style: slipText(12.5, 900, color: t.ink2, tabular: true)),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         ExcludeSemantics(
           child: GrowIn(
@@ -416,7 +438,7 @@ class _CategoryCard extends StatelessWidget {
               const SizedBox(width: 5),
               Text(name, style: slipText(12, 800, color: t.ink)),
               const SizedBox(width: 4),
-              Text(formatCents(cents), style: slipText(12, 700, color: t.ink2, tabular: true)),
+              Text(money(context, cents, currency), style: slipText(12, 700, color: t.ink2, tabular: true)),
             ]),
         ]),
       ]),
@@ -426,9 +448,10 @@ class _CategoryCard extends StatelessWidget {
 
 /// Items bought at more than one store, and what each store charges.
 class _StoresCard extends StatelessWidget {
-  const _StoresCard({required this.stores, required this.slots});
+  const _StoresCard({required this.stores, required this.slots, required this.currency});
   final List<StorePrices> stores;
   final Map<String, int> slots;
+  final String currency;
 
   @override
   Widget build(BuildContext context) {
@@ -471,7 +494,7 @@ class _StoresCard extends StatelessWidget {
                       decoration: BoxDecoration(color: palette.series(slots[e.key] ?? 8), shape: BoxShape.circle),
                     ),
                     const SizedBox(width: 5),
-                    Text('${e.key} ${formatCents(e.value.round())}${item.unit == 'each' ? '' : '/${item.unit}'}',
+                    Text('${e.key} ${money(context, e.value.round(), currency)}${item.unit == 'each' ? '' : '/${item.unit}'}',
                         style: slipText(12, 700, color: t.ink2, tabular: true)),
                     if (e.key == item.cheapest.key)
                       Text(' · cheapest', style: slipText(12, 900, color: t.downText)),
@@ -509,5 +532,44 @@ class _TipCard extends StatelessWidget {
         ),
       ]),
     );
+  }
+}
+
+/// "USD · JMD": which currency's receipts Insights is showing.
+class _CurrencyChips extends StatelessWidget {
+  const _CurrencyChips({required this.currencies, required this.value, required this.onChanged});
+  final List<String> currencies;
+  final String value;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = SlipTokens.of(context);
+    return Row(children: [
+      SlipIcon(Symbols.payments_rounded, size: 18, color: t.ink2),
+      const SizedBox(width: 8),
+      for (final c in currencies)
+        Padding(
+          padding: const EdgeInsets.only(right: 6),
+          child: Semantics(
+            selected: c == value,
+            button: true,
+            label: 'Show $c receipts',
+            child: GestureDetector(
+              onTap: () => onChanged(c),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: c == value ? t.accSoft : Colors.transparent,
+                  border: Border.all(color: c == value ? t.acc : t.line, width: 1.5),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(c, style: slipText(12.5, 900, color: c == value ? t.accText : t.ink2)),
+              ),
+            ),
+          ),
+        ),
+    ]);
   }
 }

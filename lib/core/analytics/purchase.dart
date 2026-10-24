@@ -13,6 +13,7 @@ class Purchase {
     required this.netCents,
     this.storeId,
     this.storeName,
+    this.currency = 'USD',
   });
 
   final int receiptId;
@@ -28,8 +29,11 @@ class Purchase {
   /// 'each', 'kg' or 'lb'.
   final String unit;
 
-  /// What was paid after discounts, in cents.
+  /// What was paid after discounts, in cents of [currency].
   final int netCents;
+
+  /// ISO code of the receipt's currency ("USD", "JMD").
+  final String currency;
 
   /// Price per unit in cents, unrounded.
   double get unitPrice => quantity == 0 ? netCents.toDouble() : netCents / quantity;
@@ -53,6 +57,7 @@ List<Purchase> mergeByProduct(Iterable<Purchase> lines) {
             quantity: prev.quantity + p.quantity,
             unit: p.unit,
             netCents: prev.netCents + p.netCents,
+            currency: p.currency,
           );
   }
   return merged.values.toList();

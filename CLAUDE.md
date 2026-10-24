@@ -32,12 +32,30 @@ Do not add cloud OCR/LLM services without asking.
 
 ## Conventions
 - Money is integer cents (`int`) everywhere; never `double` for money.
+- Every receipt has a currency (`lib/core/currency.dart` works it out from the
+  receipt; else the store's last one, your main one, the phone's region). Never
+  add or compare amounts in different currencies: totals are per currency,
+  Insights shows one at a time, Compare refuses mixed. Amounts in the main
+  currency show plain, others with their symbol (`money()` in
+  `lib/ui/currency_scope.dart`).
+- Receipt checks beyond the subtotal live in `lib/core/parsing/checks.dart`:
+  printed tax rate × taxed lines = printed tax, and quantities = printed item
+  count. They also pick between second readings when fixing a receipt.
 - The code is hand-formatted (~110 columns). Don't run `dart format`.
 - Quantities may be fractional (weighed items), stored as `double`.
 - Product sizes are normalised to ml / g / each.
 - Fuzzy product matches are suggestions; only user confirmation creates an alias.
 - After changing tables in `database.dart`: `dart run build_runner build`, bump
   `schemaVersion`, add a migration step.
+
+## Receipt scorecard
+- `test/scorecard/scorecard_test.dart` reads every saved receipt (photos'
+  ML Kit JSON, or a phone's Text as read) the way the app does and scores it
+  against what the paper receipt says. It runs with `flutter test` and fails
+  if a reading that was exact no longer is. Report: `docs/scorecard.md`.
+- New receipt that reads badly: add its fixture (names and card section
+  removed) and a `Reading` with the printed totals, then
+  `UPDATE_SCORECARD=1 flutter test test/scorecard` to record the result.
 
 ## Commands
 - `flutter test` — must pass before committing.

@@ -58,7 +58,11 @@ class ItemTrend {
     required this.unit,
     required this.trips,
     this.change,
+    this.currency = 'USD',
   });
+
+  /// The currency of the latest trip; [recent] and the change are in it.
+  final String currency;
 
   final int productId;
 
@@ -91,7 +95,10 @@ Map<int, ItemTrend> itemTrends(List<Purchase> purchases, {int recent = 6}) {
       e.key: () {
         final trips = e.value..sort((a, b) => a.date.compareTo(b.date));
         final latest = trips.last;
-        final sameUnit = [for (final p in trips) if (p.unit == latest.unit) p.unitPrice];
+        final sameUnit = [
+          for (final p in trips)
+            if (p.unit == latest.unit && p.currency == latest.currency) p.unitPrice,
+        ];
         final before = [
           for (final p in trips.sublist(0, trips.length - 1))
             if (p.unit == latest.unit && p.storeId == latest.storeId) p.unitPrice,
@@ -102,6 +109,7 @@ Map<int, ItemTrend> itemTrends(List<Purchase> purchases, {int recent = 6}) {
           recent: sameUnit.length > recent ? sameUnit.sublist(sameUnit.length - recent) : sameUnit,
           latestUnitPrice: latest.unitPrice,
           unit: latest.unit,
+          currency: latest.currency,
           trips: trips.length,
           change: usual == null || usual <= 0 ? null : latest.unitPrice / usual - 1,
         );

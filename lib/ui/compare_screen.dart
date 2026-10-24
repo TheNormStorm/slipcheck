@@ -10,6 +10,7 @@ import '../core/text.dart';
 import '../data/receipt_repository.dart';
 import 'chart_palette.dart';
 import 'components/kit.dart';
+import 'currency_scope.dart';
 import 'motion/motion.dart';
 import 'theme/app_theme.dart';
 import 'theme/tokens.dart';
@@ -68,6 +69,19 @@ class CompareScreen extends StatelessWidget {
             }
             final (a, b) = (snap.data!.$1, snap.data!.$2);
             final diff = snap.data!.$3;
+            if (a.summary.currency != b.summary.currency) {
+              return ListView(padding: const EdgeInsets.fromLTRB(14, 8, 14, 24), children: [
+                header,
+                const SizedBox(height: 24),
+                SlipCard(
+                  child: Text(
+                    'These receipts are in different currencies (${a.summary.currency} and '
+                    '${b.summary.currency}), so their totals can\'t be compared.',
+                    style: slipText(15, 800, color: t.ink),
+                  ),
+                ),
+              ]);
+            }
             return ListView(
               padding: const EdgeInsets.fromLTRB(14, 8, 14, 32),
               children: [
@@ -143,7 +157,7 @@ class _ReceiptTile extends StatelessWidget {
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text('${DateFormat.MMMd().format(s.purchasedAt)} · ${s.storeName ?? 'Unknown store'}',
             maxLines: 1, overflow: TextOverflow.ellipsis, style: slipText(12, 800, color: t.ink2)),
-        Text(formatCents(totalCents), style: slipText(20, 900, color: t.ink, tabular: true)),
+        Text(money(context, totalCents, s.currency), style: slipText(20, 900, color: t.ink, tabular: true)),
       ]),
     );
   }

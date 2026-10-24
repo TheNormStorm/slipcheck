@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:google_mlkit_document_scanner/google_mlkit_document_scanner.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../core/currency.dart';
 import '../core/parsing/redaction.dart';
 import '../data/receipt_files.dart';
 import '../data/receipt_repository.dart';
@@ -94,12 +95,18 @@ class ScanSession {
             discountCents: l.discountCents,
             code: l.code,
             section: l.section,
+            taxCode: l.taxCode,
           ),
       ],
       subtotalCents: parsed.subtotalCents,
       taxCents: parsed.taxCents,
       totalCents: parsed.totalCents,
       imagePaths: result.imagePaths,
+      // Worked out from every row, the card section included ("USD $362.90").
+      currency: detectCurrency(result.stitch.rows) ?? 'USD',
+      currencyKnown: detectCurrency(result.stitch.rows) != null,
+      taxLines: parsed.taxLines,
+      printedItemCount: parsed.printedItemCount,
       // Card numbers and approval codes are not kept.
       ocrText: withoutPaymentSection(result.stitch.rows).join('\n'),
     );
@@ -107,6 +114,7 @@ class ScanSession {
 
   /// Things the user should look at, in plain words.
   List<String> notes() => [
+        for (final c in result.parsed.corrections) 'Fixed so it adds up. $c Check it against the receipt.',
         for (final (i, page) in pages.indexed)
           if (page.problem != null) 'Photo ${i + 1}: ${page.problem}. Retake it?',
         for (final join in result.stitch.joins)

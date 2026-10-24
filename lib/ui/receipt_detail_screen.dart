@@ -13,6 +13,7 @@ import '../data/receipt_repository.dart';
 import 'chart_palette.dart';
 import 'compare_screen.dart';
 import 'components/kit.dart';
+import 'currency_scope.dart';
 import 'components/dialogs.dart';
 import 'line_item_row.dart';
 import 'motion/motion.dart';
@@ -75,6 +76,8 @@ class _ReceiptDetailScreenState extends State<ReceiptDetailScreen> {
           subtotalCents: detail.subtotalCents,
           taxCents: s.taxCents,
           totalCents: s.totalCents,
+          currency: s.currency,
+          currencyKnown: true,
         ),
       ),
     ));
@@ -109,7 +112,9 @@ class _ReceiptDetailScreenState extends State<ReceiptDetailScreen> {
 
   /// The receipt to compare with by default: the previous one from the same
   /// store, else any earlier one, else the newest other one.
-  static ReceiptSummary? _suggested(ReceiptSummary me, List<ReceiptSummary> others) {
+  static ReceiptSummary? _suggested(ReceiptSummary me, List<ReceiptSummary> all) {
+    // Only receipts in the same currency can be compared.
+    final others = all.where((r) => r.currency == me.currency).toList();
     final earlier = others.where((r) => !r.purchasedAt.isAfter(me.purchasedAt)).toList();
     return earlier.where((r) => r.storeId == me.storeId).firstOrNull ??
         earlier.firstOrNull ??
@@ -146,7 +151,7 @@ class _ReceiptDetailScreenState extends State<ReceiptDetailScreen> {
                     subtitle: Text('${DateFormat.yMMMd().format(r.purchasedAt)} · ${plural(r.itemCount, 'item')}'
                         '${r == suggested ? ' · suggested' : ''}'),
                     trailing:
-                        Text(formatCents(r.spentCents), style: slipText(15, 900, color: t.ink, tabular: true)),
+                        Text(money(context, r.spentCents, r.currency), style: slipText(15, 900, color: t.ink, tabular: true)),
                     onTap: () => Navigator.pop(context, r),
                   ),
               ]),
@@ -251,7 +256,10 @@ class _ReceiptDetailScreenState extends State<ReceiptDetailScreen> {
                 label: 'Spent',
                 color: t.acc,
                 ink: onAcc,
-                value: CountUp(cents: s.spentCents, style: slipText(28, 900, color: onAcc, tabular: true)),
+                value: CountUp(
+                    cents: s.spentCents,
+                    prefix: symbolFor(context, s.currency),
+                    style: slipText(28, 900, color: onAcc, tabular: true)),
               ),
             ),
             const SizedBox(width: 8),

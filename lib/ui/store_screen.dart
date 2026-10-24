@@ -12,6 +12,7 @@ import '../data/receipt_repository.dart';
 import 'chart_palette.dart';
 import 'compare_screen.dart';
 import 'components/kit.dart';
+import 'currency_scope.dart';
 import 'motion/motion.dart';
 import 'receipt_detail_screen.dart';
 import 'reload_on_change.dart';
@@ -265,9 +266,9 @@ class _Header extends StatelessWidget {
         right: 14,
         bottom: -34,
         child: Row(children: [
-          tile('Spent', formatCents(s.spentCents)),
+          tile('Spent', money(context, s.spentCents, s.currency)),
           const SizedBox(width: 8),
-          tile('Avg trip', formatCents(perTrip)),
+          tile('Avg trip', money(context, perTrip, s.currency)),
           const SizedBox(width: 8),
           tile('Items', '${data.itemCount}'),
         ]),
@@ -317,7 +318,7 @@ class _TripRow extends StatelessWidget {
               Text(plural(r.itemCount, 'item'), style: slipText(12.5, 700, color: t.ink2)),
             ]),
           ),
-          Text(formatCents(r.spentCents), style: slipText(15, 900, color: t.ink, tabular: true)),
+          Text(money(context, r.spentCents, r.currency), style: slipText(15, 900, color: t.ink, tabular: true)),
         ]),
       ),
     );

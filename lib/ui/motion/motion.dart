@@ -3,7 +3,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
-import '../../core/money.dart';
+import '../../core/currency.dart';
 
 /// Curves and timings from the design handoff's motion table. Everything
 /// here shows its end state at once when the phone asks for reduced motion
@@ -159,7 +159,7 @@ class CountUp extends StatelessWidget {
   /// Show a leading + for positive values.
   final bool signed;
 
-  String _format(int c) => '${signed && c > 0 ? '+' : c < 0 ? '−' : ''}$prefix${formatCents(c.abs())}';
+  String _format(int c) => '${signed && c > 0 ? '+' : c < 0 ? '−' : ''}$prefix${groupedAmount(c.abs())}';
 
   @override
   Widget build(BuildContext context) {

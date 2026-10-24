@@ -1,0 +1,23 @@
+C&M MEATS & GROCERIES
+22 MANCHESTER AVENUE
+MAYPEN, CLARENDON
+Sales Receipt
+Transaction #: 3485601
+Date: 10/24/2026 Time: 10:58:34 AM
+Cashier: CASHIER X Register #: 2
+Description Amount
+MUTTON IMP $2,850.00
+3 @ $950.00/
+Manual Weight
+TURKEY NECK(33LBS) $960.00
+3 @ $320.00/
+Manual Weight
+SPARE RIBS $1,650.00
+3 @ $550.00/
+Manual Weight
+Sub Total $5,460.00
+5ales Ta% $0.00
+Total $5,460.00
+DEBIT CARD Tendered $5,460.00
+Change Due $0.00
+NO CASH REFUND. EXCHANGE ONLY !!

@@ -17,4 +17,4 @@ HST 13%               0.65
 TOTAL                24.35
 VISA                 24.35
 CHANGE                0.00
-ITEMS SOLD 8
+ITEMS SOLD 9
