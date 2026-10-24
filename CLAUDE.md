@@ -1,7 +1,10 @@
 # Slipcheck — notes for Claude
 
-Flutter app, Android first. Fully on-device: no network calls, no API keys, no accounts.
-Do not add cloud OCR/LLM services without asking.
+Flutter app, Android first. Fully on-device: no API keys, no accounts, and no
+network calls except one: "Check for updates" in the menu, which asks GitHub's
+public releases API for the latest version when the user taps it
+(`lib/data/update_checker.dart`). Nothing about receipts is ever sent.
+Do not add cloud OCR/LLM services or other network calls without asking.
 
 ## Layout
 - `lib/core/` — pure Dart, no Flutter imports. Parsing (`parsing/`: row grouping,
@@ -38,6 +41,14 @@ Do not add cloud OCR/LLM services without asking.
 - Fuzzy product matches are suggestions; only user confirmation creates an alias.
 - After changing tables in `database.dart`: `dart run build_runner build`, bump
   `schemaVersion`, add a migration step.
+
+## Releases
+- Version in `pubspec.yaml` (`0.10.0+10`): bump both parts for every release;
+  the build number must go up or Android refuses the update.
+- Releases are published to github.com/TheNormStorm/slipcheck with a tag
+  `vX.Y.Z` and the arm64 APK attached; the in-app check reads the latest one.
+  Build them on this Mac (APKs are signed with its debug key, and an update
+  must be signed with the same key). See docs/github-side-quest.md.
 
 ## Commands
 - `flutter test` — must pass before committing.

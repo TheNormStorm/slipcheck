@@ -256,12 +256,14 @@ class _MoreMenu extends StatelessWidget {
         'csv' => actions.exportCsv(),
         'backup' => actions.backup(),
         'restore' => actions.restore(context),
+        'update' => actions.checkForUpdates(context),
         _ => actions.clearAll(context),
       },
       itemBuilder: (_) => [
         item('csv', Symbols.table_view_rounded, 'Export spreadsheet', 'CSV of every line'),
         item('backup', Symbols.cloud_upload_rounded, 'Back up', 'You pick where it goes'),
         item('restore', Symbols.settings_backup_restore_rounded, 'Restore', 'From a backup file'),
+        item('update', Symbols.system_update_rounded, 'Check for updates', 'Asks GitHub, sends nothing else'),
         const PopupMenuDivider(),
         item('clear', Symbols.delete_sweep_rounded, 'Clear everything', 'Receipts, items and stores', danger: true),
         PopupMenuItem(
