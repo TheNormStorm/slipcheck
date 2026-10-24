@@ -31,6 +31,11 @@ class ParsedLine {
   String? section;
 
   int get netCents => lineTotalCents - discountCents;
+
+  /// Other line totals this line may have been: its quantity line's
+  /// ("1 @ 16.78" under a 16.73), or every last digit when it was lost
+  /// ("1.4" for 1.4?). Used only to make the receipt add up.
+  final alternatives = <int>[];
 }
 
 class ParsedReceipt {
@@ -52,6 +57,9 @@ class ParsedReceipt {
   int? taxCents;
   int? totalCents;
   final List<String> warnings;
+
+  /// Lines changed to a second reading so the receipt adds up, in words.
+  final corrections = <String>[];
 
   int get itemsSumCents => items.fold(0, (sum, i) => sum + i.netCents);
 }
@@ -108,6 +116,10 @@ class ReceiptParser {
       RegExp(r'^(\d{1,2})\s*(?:[@09©®eaQ]|\s)\s*\$?(\d{1,4}[.,]\d{2})\s*/?$');
 
   static final _letters = RegExp(r'[A-Za-z]{2,}');
+  // "SCALLIONS 1.4 F": one digit of the cents, then a tax code.
+  static final _partialAmount = RegExp(r'^(.*?)\s*\$?(\d{1,4}[.,]\d)\s*([A-Z])$');
+  // A tax code printed after a price: "4.99 F", "6.59 T".
+  static final _taxCodeAfterPrice = RegExp(r'\d[.,]\d{2}\s*([A-Z])$');
   // Notes printed under an item that are not part of its name: "Manual
   // Weight" (and OCR's "Manual #eight").
   static final _note = RegExp(r'^\s*manual\s+\S?eight\b', caseSensitive: false);
@@ -179,6 +191,14 @@ class ReceiptParser {
     ];
 
     receipt.date = findDate(cleaned, dayFirst: dayFirst);
+    // Tax codes seen on at least two priced rows, so "1.5 L" is never read
+    // as a price that lost a digit.
+    final codeCounts = <String, int>{};
+    for (final row in cleaned) {
+      final c = _taxCodeAfterPrice.firstMatch(row)?.group(1);
+      if (c != null) codeCounts[c] = (codeCounts[c] ?? 0) + 1;
+    }
+    final taxCodes = {for (final e in codeCounts.entries) if (e.value >= 2) e.key};
     receipt.storeName = _findStore(cleaned);
 
     // Name-only rows since the last item: section headings, names whose
@@ -282,9 +302,21 @@ class ReceiptParser {
       var qty = _readQty(row);
       final rest = qty == null ? row : _stripQty(row);
       final amountMatch = _trailingAmount.firstMatch(rest);
-      final amount =
+      var amount =
           amountMatch == null ? null : parseCents(amountMatch.group(2)!);
       var desc = amountMatch?.group(1)?.trim() ?? rest;
+      // A price that lost its last digit ("SCALLIONS 1.4 F"), when what
+      // follows is a tax code this receipt prints after prices.
+      List<int>? lostDigit;
+      if (amount == null) {
+        final m = _partialAmount.firstMatch(rest);
+        if (m != null && taxCodes.contains(m.group(3)) && _letters.hasMatch(m.group(1)!)) {
+          final tenths = parseCents('${m.group(2)}0')!;
+          amount = tenths;
+          desc = m.group(1)!.trim();
+          lostDigit = [for (var d = 1; d <= 9; d++) tenths + d];
+        }
+      }
 
       if (qty == null) {
         final loose = _readLooseQty(row);
@@ -364,6 +396,12 @@ class ReceiptParser {
             add(made.$1, made.$2);
           } else {
             pendingQty = qty;
+            // A quantity line that does not fit the item above may be the
+            // right reading of its price ("16.73" over "1 @ 16.78").
+            final last = lastUnquantified();
+            if (last != null && qty.unit == 'each' && qty.expectedCents > 0) {
+              last.alternatives.add(qty.expectedCents);
+            }
           }
         } else if (rowHasName && isDepartmentHeading(desc)) {
           section = desc;
@@ -403,6 +441,7 @@ class ReceiptParser {
           rawText: rowHasName ? _cleanName(name) : _cleanUnpricedName(name),
           lineTotalCents: amount)
         ..code = code;
+      if (lostDigit != null) line.alternatives.addAll(lostDigit);
       final appliedQty = qty ?? pendingQty;
       if (appliedQty != null && appliedQty.fits(amount)) _applyQty(line, appliedQty);
       add(line, name);
@@ -410,8 +449,59 @@ class ReceiptParser {
       pendingQty = null;
     }
 
+    _reconcile(receipt);
     _validate(receipt);
     return receipt;
+  }
+
+  /// When the items do not add up to the receipt's own subtotal, tries the
+  /// lines' second readings ([ParsedLine.alternatives]) and takes the
+  /// fewest changes that make it add up exactly, if only one set does.
+  void _reconcile(ParsedReceipt r) {
+    final expected = r.subtotalCents ?? (r.totalCents == null ? null : r.totalCents! - (r.taxCents ?? 0));
+    if (expected == null) return;
+    final diff = expected - r.itemsSumCents;
+    final open = [for (final i in r.items) if (i.alternatives.isNotEmpty) i];
+    if (diff == 0 || open.isEmpty || open.length > 12) return;
+
+    List<(ParsedLine, int)>? best;
+    var found = 0;
+    var tried = 0;
+    // Every way to change exactly [want] of the open lines.
+    void search(int at, int left, int want, List<(ParsedLine, int)> chosen) {
+      if (++tried > 200000 || found > 1) return;
+      if (chosen.length == want || at == open.length) {
+        if (chosen.length == want && left == 0) {
+          found++;
+          best ??= [...chosen];
+        }
+        return;
+      }
+      search(at + 1, left, want, chosen);
+      final line = open[at];
+      for (final alt in line.alternatives.toSet()) {
+        if (alt == line.lineTotalCents) continue;
+        chosen.add((line, alt));
+        search(at + 1, left - (alt - line.lineTotalCents), want, chosen);
+        chosen.removeLast();
+      }
+    }
+
+    for (var want = 1; want <= open.length && found == 0; want++) {
+      search(0, diff, want, []);
+    }
+    // None, or more than one equally small fix: leave it for the user.
+    if (found != 1) return;
+    for (final (line, alt) in best!) {
+      final lostDigit = line.alternatives.length == 9 && line.alternatives.first == line.lineTotalCents + 1;
+      r.corrections.add(lostDigit
+          ? '${line.rawText}: the last digit was unreadable; ${formatCents(alt)} makes the receipt add up.'
+          : '${line.rawText}: read as ${formatCents(line.lineTotalCents)}; its quantity line says '
+              '${formatCents(alt)}, which makes the receipt add up.');
+      line
+        ..lineTotalCents = alt
+        ..unitPriceCents = line.quantity == 1 ? null : (alt / line.quantity).round();
+    }
   }
 
   /// Makes an item from name rows whose price was not read, pricing it from

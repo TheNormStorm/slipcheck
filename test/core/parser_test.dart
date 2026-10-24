@@ -71,6 +71,41 @@ void main() {
     });
   });
 
+  group('second readings make a misread receipt add up', () {
+    test('the 96-line Market Basket receipt as an iPhone read it', () {
+      final r = const ReceiptParser().parse(fixture('market_basket3_iphone'));
+      expect((r.subtotalCents, r.taxCents, r.totalCents), (36133, 157, 36290));
+      expect(r.items, hasLength(64));
+      expect(r.itemsSumCents, 36133);
+      expect(r.warnings, isEmpty);
+      int price(String name) => r.items.firstWhere((i) => i.rawText.startsWith(name)).lineTotalCents;
+      expect(price('CAB BONELESS RIB'), 1678); // read 16.73, "1 @ 16.78"
+      expect(price('CAB PRIME RIBEYE'), 1949); // read 13.49, "1 @ 19.49"
+      expect(price('93% X-LEAN GR BF 1-2'), 846); // read 6.46, "1 @ 8.46"
+      expect(price('SCALLIONS'), 149); // read "1.4 F"
+      expect(r.corrections, hasLength(4));
+      expect(r.corrections.first, contains('SCALLIONS'));
+    });
+
+    test('nothing changes when the receipt already adds up', () {
+      final r = const ReceiptParser().parse(['BEEF 13.49 F', '1 @ 19.49', 'MILK 4.29 F', 'SUBTOTAL 17.78', 'TOTAL 17.78']);
+      expect(r.items.map((i) => i.lineTotalCents), [1349, 429]);
+      expect(r.corrections, isEmpty);
+    });
+
+    test('two fixes that would both work: neither is guessed', () {
+      final r = const ReceiptParser().parse(
+          ['BEEF 13.49 F', '1 @ 14.49', 'LAMB 13.49 F', '1 @ 14.49', 'SUBTOTAL 27.98', 'TOTAL 27.98']);
+      expect(r.corrections, isEmpty);
+      expect(r.itemsSumCents, 2698);
+    });
+
+    test('"1.5 L" is a size, not a price that lost a digit', () {
+      final r = const ReceiptParser().parse(['WATER 1.5 L', 'MILK 4.29 F', 'TOTAL 4.29']);
+      expect(r.items.map((i) => i.rawText), ['MILK']);
+    });
+  });
+
   group('money', () {
     test('parses common amount formats', () {
       expect(parseCents('4.99'), 499);
