@@ -104,6 +104,9 @@ final readings = [
   Reading(cmMeats, 'Android phone, Text as read', ['cm_meats_phone.txt']),
   Reading(cmMeats, 'iPhone, Text as read', ['cm_meats_iphone.txt']),
   Reading(jmSupermarket, 'Android phone, Text as read (3 photos)', ['jm_supermarket_phone.txt']),
+  // A signature across "Digi 1000 $1000.00 T4": that line can't be read.
+  Reading(jmSupermarket, '3 photos (small copies), Android emulator',
+      ['jm_supermarket_top.json', 'jm_supermarket_middle.json', 'jm_supermarket_bottom.json']),
   Reading(freshMart, 'typed', ['grocery_basic.txt']),
   Reading(freshMart, 'as ML Kit spaces it', ['mlkit_grocery_basic.txt']),
   Reading(valueStore, 'typed', ['qty_after_item.txt']),

@@ -150,6 +150,13 @@ void main() {
       expect(r.taxCheck.agrees, isTrue);
     });
 
+    test('a discount whose word was split and minus lost', () {
+      final r = const ReceiptParser().parse(
+          [r'Roma Cocoa $117.35 T3', r'Package price di scount$14.40', r'Subtotal $102.95', r'TOTAL $102.95']);
+      expect(r.items.map((i) => (i.rawText, i.netCents)), [('Roma Cocoa', 10295)]);
+      expect(r.warnings, isEmpty);
+    });
+
     test('only Items Subtotal read: the subtotal is it less the discounts', () {
       final r = const ReceiptParser().parse(
           [r'Roma Cocoa $117.35 T3', r'Package price discount -$4.80', r'Items Subtotal $117.35']);
