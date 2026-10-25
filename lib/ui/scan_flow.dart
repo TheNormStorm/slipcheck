@@ -96,6 +96,7 @@ class ScanSession {
             code: l.code,
             section: l.section,
             taxCode: l.taxCode,
+            taxCodeUnknown: l.taxCodeUnknown,
           ),
       ],
       subtotalCents: parsed.subtotalCents,

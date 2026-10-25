@@ -25,6 +25,7 @@ class DraftLine {
     this.code,
     this.section,
     this.taxCode,
+    this.taxCodeUnknown = false,
   }) : originalText = originalText ?? name;
 
   /// The product name as corrected by the user.
@@ -51,6 +52,10 @@ class DraftLine {
   /// The tax code printed after the price ("F", "T"), for the tax check.
   /// Not saved.
   final String? taxCode;
+
+  /// Whether the tax code was lost with the line's price, or the line was
+  /// added by hand: the tax check tries it both ways. Not saved.
+  final bool taxCodeUnknown;
 
   int get netCents => lineTotalCents - discountCents;
 }

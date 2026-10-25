@@ -3,7 +3,7 @@
 Every receipt reading we have, read the way the app reads it, against what the
 paper receipt says. Regenerate with `UPDATE_SCORECARD=1 flutter test test/scorecard`.
 
-**14 of 15 readings exact.** Currency wrong: 0. Tax or item-count check failing: 1.
+**15 of 16 readings exact.** Currency wrong: 0. Tax or item-count check failing: 1.
 
 "Other checks": the printed tax rate of the taxed lines gives the printed tax; the
 quantities match the printed item count. "–" means the receipt (or what was kept
@@ -24,6 +24,7 @@ of it: the card section, where some tills print the count, is cut) gives nothing
 | C&M Meats, Oct 24 | 1 photo, Android emulator | 3 of 3 | 5460.00 | 5460.00 | ✓ exact | ✓ JMD | tax –, count – |
 | C&M Meats, Oct 24 | Android phone, Text as read | 3 of 3 | 5460.00 | 5460.00 | ✓ exact | ✓ JMD | tax –, count – |
 | C&M Meats, Oct 24 | iPhone, Text as read | 3 of 3 | 5460.00 | 5460.00 | ✓ exact | ✓ JMD | tax –, count – |
+| Jamaican supermarket, GCT at 15% and 25% | Android phone, Text as read (3 photos) | 53 of 53 | 18038.88 | 18038.88 | ✓ exact | ✓ JMD | tax ✓, count – |
 | FreshMart (typed example) | typed | 6 of 6 | 23.70 | 23.70 | ✓ exact | ✓ CAD | tax ✓, count ✓ |
 | FreshMart (typed example) | as ML Kit spaces it | 6 of 6 | 23.70 | 23.70 | ✓ exact | ✓ CAD | tax ✓, count ✓ |
 | Value Store (typed example) | typed | 2 of 2 | 9.71 | 9.71 | ✓ exact | – (USD not printed) | tax –, count – |

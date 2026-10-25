@@ -71,6 +71,93 @@ void main() {
     });
   });
 
+  group('a Jamaican supermarket: GCT at two rates, each lines, department headings', () {
+    test('the whole receipt as read on a phone', () {
+      final r = const ReceiptParser().parse(fixture('jm_supermarket_phone'));
+      expect(r.items, hasLength(53));
+      expect(r.subtotalCents, 1803888);
+      expect(r.itemsSumCents, 1803888);
+      expect(r.taxCents, 168198 + 37500);
+      expect(r.totalCents, 2009586);
+      expect(r.warnings, isEmpty);
+      expect(r.corrections, isEmpty);
+      // 15% of the T3 lines (and the two read as TR), 25% of the phone cards.
+      expect(r.taxCheck.agrees, isTrue);
+      expect(r.taxCheck.taxedCodes, {'T3', 'TR', 'T4'});
+      expect(r.items.where((i) => i.rawText.contains('Spiced Bun')), hasLength(5));
+      expect(r.items.map((i) => i.section).toSet(), {
+        'BAKERY EXTERNAL GOODS', 'BEVERAGES', 'DAIRY', 'GROCERY-FOODS', 'GROCERY NON-FOODS', 'MEATS', 'PRODUCE',
+        'HABERDASHERY', 'LIQUORS', 'PHONE CARDS',
+      });
+    });
+
+    test('a price on the row above its name, under a heading', () {
+      final r = const ReceiptParser().parse([
+        'BAKERY EXTERNAL GOODS', r'$156.53 T3', 'National Spiced Bun 4 OZ', r'National Spiced Bun 4 OZ $156.53 T3',
+        r'Hardo Bread $580.00', r'TOTAL $893.06',
+      ]);
+      expect(r.items.map((i) => (i.rawText, i.lineTotalCents, i.taxCode)), [
+        ('National Spiced Bun 4 OZ', 15653, 'T3'),
+        ('National Spiced Bun 4 OZ', 15653, 'T3'),
+        ('Hardo Bread', 58000, null),
+      ]);
+      expect(r.items.first.section, 'BAKERY EXTERNAL GOODS');
+    });
+
+    test('a stray price without a tax code is not given to the next name', () {
+      final r = const ReceiptParser().parse(
+          [r'MILK $4.00 T', r'BREAD $3.00 T', r'$12.34', 'Cashier: Pat', r'EGGS $5.00 T', r'TOTAL $12.00']);
+      expect(r.items.map((i) => i.rawText), ['MILK', 'BREAD', 'EGGS']);
+    });
+
+    test('an each line over a name whose price was lost', () {
+      final r = const ReceiptParser().parse([
+        'LIQUORS', r'1 @ $210,34 each (3@$202.54) (24@$194.75)', 'Legend Flavoured Beer Kola', 'PHONE CARDS',
+        r'Digi 1000 $1000.00 T4', r'TOTAL $1210.34',
+      ]);
+      expect(r.items.map((i) => (i.rawText, i.lineTotalCents)), [
+        ('Legend Flavoured Beer Kola', 21034),
+        ('Digi 1000', 100000),
+      ]);
+      expect(r.items.first.taxCodeUnknown, isTrue);
+      expect(r.items.first.section, 'LIQUORS');
+    });
+
+    test("each lines with the count misread don't make a quantity of 10", () {
+      final r = const ReceiptParser().parse([
+        r'10 $171.75 each (308164.70) (30@$157.66)', r'Arizona Fruit Punch $171.75 T3',
+        r'I@ $226.08 each (3@$220.42) (30@$207.23)', r'Uncle Sams Vegetable Oil $226.08',
+        r'19 $1.99 each (3@$1.89)', r'Chips $5.97 T3',
+        r'TOTAL $403.80',
+      ]);
+      expect(r.items.map((i) => (i.quantity, i.unitPriceCents, i.lineTotalCents)), [
+        (1.0, 17175, 17175),
+        (1.0, 22608, 22608),
+        (3.0, 199, 597),
+      ]);
+    });
+
+    test('Items Subtotal is before discounts; the discount total is not a line discount', () {
+      final r = const ReceiptParser().parse([
+        r'Roma Cocoa $117.35 T3', r'Package price discount -$4.80', r'Digi 500 $500.00 T4',
+        r'Items Subtotal $617.35', r'Package price di scount Tot -$4.80', r'Subtotal $612.55',
+        r'GCT Standard 15% [$112.55 $16.88', r'GCT Standard 25% [$500.00 $125.00', r'TOTAL $754.43',
+      ]);
+      expect(r.items.map((i) => (i.rawText, i.netCents)), [('Roma Cocoa', 11255), ('Digi 500', 50000)]);
+      expect(r.subtotalCents, 61255);
+      expect(r.taxCents, 14188);
+      expect(r.warnings, isEmpty);
+      expect(r.taxCheck.agrees, isTrue);
+    });
+
+    test('only Items Subtotal read: the subtotal is it less the discounts', () {
+      final r = const ReceiptParser().parse(
+          [r'Roma Cocoa $117.35 T3', r'Package price discount -$4.80', r'Items Subtotal $117.35']);
+      expect(r.subtotalCents, 11255);
+      expect(r.warnings, ['No total found.']);
+    });
+  });
+
   group('second readings make a misread receipt add up', () {
     test('the 96-line Market Basket receipt as an iPhone read it', () {
       final r = const ReceiptParser().parse(fixture('market_basket3_iphone'));
