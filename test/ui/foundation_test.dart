@@ -46,6 +46,9 @@ void main() {
       expect(find.text('Slipcheck'), findsOneWidget);
       expect(find.text('Market Basket'), findsWidgets);
       expect(find.bySemanticsLabel('Scan a receipt'), findsOneWidget);
+      // One way to scan on Home: the bottom bar's button.
+      expect(find.text('Scan receipt'), findsNothing);
+      expect(find.text('Got a receipt? Tap Scan below.'), findsOneWidget);
       expect(Theme.of(tester.element(find.byType(AppShell))).extension<SlipTokens>()!.punchy,
           brightness == Brightness.dark);
 
