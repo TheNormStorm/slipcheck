@@ -29,6 +29,14 @@ void main() {
     expect((fixes.single as MissingLine).cents, 399);
   });
 
+  test("repeated amounts aren't suspects; short means a line may be missing", () {
+    // Five buns at 156.53 and a phone card lost under a signature.
+    final fixes = suggestFixes([15653, 15653, 15653, 15653, 15653, 58000, 50000], 15653 * 5 + 58000 + 150000);
+    expect(fixes.whereType<ChangeAmount>().where((f) => f.index < 5), isEmpty);
+    expect(fixes.last, isA<MissingLine>());
+    expect((fixes.last as MissingLine).cents, 100000);
+  });
+
   test('every suggestion makes it add up', () {
     final lines = [129, 999, 1648, 349, 2050];
     const expected = 129 + 999 + 1048 + 349 + 2050;
