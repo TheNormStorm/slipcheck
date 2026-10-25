@@ -41,6 +41,8 @@ Do not add cloud OCR/LLM services without asking.
 - Receipt checks beyond the subtotal live in `lib/core/parsing/checks.dart`:
   printed tax rate × taxed lines = printed tax, and quantities = printed item
   count. They also pick between second readings when fixing a receipt.
+  A line whose tax code was lost with its price (`taxCodeUnknown`) is tried
+  taxed and untaxed, but only counts when exactly one way fits.
 - The code is hand-formatted (~110 columns). Don't run `dart format`.
 - Quantities may be fractional (weighed items), stored as `double`.
 - Product sizes are normalised to ml / g / each.

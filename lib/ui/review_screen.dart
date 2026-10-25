@@ -244,7 +244,12 @@ class _ReviewScreenState extends State<ReviewScreen> {
 
   List<CheckLine> get _checkLines => [
         for (final l in draft.lines)
-          CheckLine(cents: l.netCents, quantity: l.quantity, unit: l.unit, taxCode: l.taxCode),
+          CheckLine(
+              cents: l.netCents,
+              quantity: l.quantity,
+              unit: l.unit,
+              taxCode: l.taxCode,
+              taxCodeUnknown: l.taxCodeUnknown),
       ];
 
   /// The receipt's own checks besides the subtotal, as they stand with the
@@ -258,9 +263,14 @@ class _ReviewScreenState extends State<ReviewScreen> {
     final tax = checkTax(_checkLines, taxLines);
     final count = checkCount(_checkLines, draft.printedItemCount);
     final codes = tax.taxedCodes.join(', ');
+    final rates = [for (final t in taxLines) if (t.ratePercent != null) _percent(t.ratePercent!)];
+    final how = tax.ratePercent != null
+        ? ': ${_percent(tax.ratePercent!)} of the $codes lines'
+        : rates.length > 1
+            ? ' at both rates printed (${rates.join(' and ')})'
+            : '';
     return [
-      if (tax.agrees == true)
-        (true, 'Tax checks out${tax.ratePercent == null ? '' : ': ${_percent(tax.ratePercent!)} of the $codes lines'}'),
+      if (tax.agrees == true) (true, 'Tax checks out$how'),
       if (tax.agrees == false) (false, "Tax doesn't match the rate printed: a taxed line may be misread"),
       if (count == true) (true, '${draft.printedItemCount} items, as printed'),
       if (count == false)
@@ -523,7 +533,7 @@ class _ReviewScreenState extends State<ReviewScreen> {
   }
 
   Future<void> _addLine() async {
-    final line = DraftLine(name: '', lineTotalCents: 0);
+    final line = DraftLine(name: '', lineTotalCents: 0, taxCodeUnknown: true);
     setState(() => draft.lines.add(line));
     await _editLine(line);
   }

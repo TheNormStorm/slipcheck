@@ -12,7 +12,8 @@ void main() {
   group('department headings', () {
     test('recognised', () {
       for (final h in ['PRODUCE DEPT', 'FRESH POULTRY', 'TAX GROCERY', 'ICE CREAM', 'HABA',
-          'STORE CUT BEEF', 'ORGANIC FRUIT', 'BOTTLE DEPOSIT', 'YOGURT']) {
+          'STORE CUT BEEF', 'ORGANIC FRUIT', 'BOTTLE DEPOSIT', 'YOGURT', 'BAKERY EXTERNAL GOODS',
+          'GROCERY-FOODS', 'GROCERY NON-FOODS', 'HABERDASHERY', 'LIQUORS', 'PHONE CARDS']) {
         expect(isDepartmentHeading(h), isTrue, reason: h);
       }
     });
@@ -28,6 +29,9 @@ void main() {
     test('keywords first, then the heading, then Other', () {
       expect(categorize('CEDARS PITA', section: 'CHEESE'), Category.bakery);
       expect(categorize('GOYA LITE COCNUTMILK', section: 'GROCERY'), Category.pantry);
+      expect(categorize('Scotch Brite Scouring Pad', section: 'GROCERY NON-FOODS'), Category.household);
+      expect(categorize('Legend Flavoured Beer Kola', section: 'LIQUORS'), Category.drinks);
+      expect(categorize('Aluminium Roasting Tray', section: 'HABERDASHERY'), Category.household);
       expect(categorize('PKG GREEN BEANS USA', section: 'PRODUCE DEPT'), Category.produce);
       expect(categorize('GOYA WHITE BEANS'), Category.pantry);
       expect(categorize('BEPRTYWNGABF', section: 'FRESH POULTRY'), Category.meat);

@@ -70,6 +70,8 @@ class Reading {
 const marketBasket =
     Printed('Market Basket, Oct 22', lines: 64, itemsCents: 36133, totalCents: 36290, currency: 'USD');
 const cmMeats = Printed('C&M Meats, Oct 24', lines: 3, itemsCents: 546000, totalCents: 546000, currency: 'JMD');
+const jmSupermarket = Printed('Jamaican supermarket, GCT at 15% and 25%',
+    lines: 53, itemsCents: 1803888, totalCents: 2009586, currency: 'JMD');
 const freshMart =
     Printed('FreshMart (typed example)', lines: 6, itemsCents: 2370, totalCents: 2435, currency: 'CAD');
 const valueStore =
@@ -101,6 +103,7 @@ final readings = [
   Reading(cmMeats, '1 photo, Android emulator', ['cm_meats_mlkit.json']),
   Reading(cmMeats, 'Android phone, Text as read', ['cm_meats_phone.txt']),
   Reading(cmMeats, 'iPhone, Text as read', ['cm_meats_iphone.txt']),
+  Reading(jmSupermarket, 'Android phone, Text as read (3 photos)', ['jm_supermarket_phone.txt']),
   Reading(freshMart, 'typed', ['grocery_basic.txt']),
   Reading(freshMart, 'as ML Kit spaces it', ['mlkit_grocery_basic.txt']),
   Reading(valueStore, 'typed', ['qty_after_item.txt']),

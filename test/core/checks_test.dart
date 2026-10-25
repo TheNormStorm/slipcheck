@@ -42,6 +42,29 @@ void main() {
     });
   });
 
+  group('a line whose code was lost', () {
+    CheckLine lost(int cents) => CheckLine(cents: cents, taxCodeUnknown: true);
+
+    test('is tried taxed and untaxed', () {
+      // The Jamaican receipt: the T3 lines and Beer Kola (its code lost with
+      // its price) make the 11,213.20 the 15% GCT was charged on.
+      final lines = [line(1080346, 'T3'), line(19940, 'TR'), lost(21034), line(532568), line(150000, 'T4')];
+      final t = checkTax(lines, [const TaxLine(168198, ratePercent: 15), const TaxLine(37500, ratePercent: 25)]);
+      expect(t.agrees, isTrue);
+      expect(t.taxedCodes, {'T3', 'TR', 'T4'});
+      // Without the flag the tax doesn't add up.
+      final known = [for (final l in lines) l.taxCodeUnknown ? line(l.cents) : l];
+      expect(checkTax(known, [const TaxLine(168198, ratePercent: 15)]).agrees, isFalse);
+    });
+
+    test('but not when more than one way of counting them fits', () {
+      // Two lost lines of the same price: either one makes 1.57, so neither
+      // reading can be trusted.
+      final lines = [line(2213, 'T'), lost(299), lost(299), line(999, 'F')];
+      expect(checkTax(lines, [const TaxLine(157, ratePercent: 6.25)]).agrees, isFalse);
+    });
+  });
+
   group('count', () {
     test('units of counted items, one per weighed line', () {
       final lines = [line(897, 'F', 3), line(150, 'F', 3), line(681, 'F', 4.57, 'lb'), line(10, 'F', 2)];

@@ -12,6 +12,7 @@
   "cm_meats_mlkit.json": "exact JMD null null",
   "cm_meats_phone.txt": "exact JMD null null",
   "cm_meats_iphone.txt": "exact JMD null null",
+  "jm_supermarket_phone.txt": "exact JMD true null",
   "grocery_basic.txt": "exact CAD true true",
   "mlkit_grocery_basic.txt": "exact CAD true true",
   "qty_after_item.txt": "exact - null null",
