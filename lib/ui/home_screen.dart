@@ -169,25 +169,7 @@ class _EmptyHome extends StatelessWidget {
         const SizedBox(height: 14),
         Text('Nothing here yet', style: slipText(20, 900, color: t.ink)),
         const SizedBox(height: 4),
-        Text("Scan your first receipt. Slip's hungry.", style: slipText(13.5, 700, color: t.ink2)),
-        const SizedBox(height: 18),
-        ValueListenableBuilder(
-          valueListenable: actions.busy,
-          builder: (context, busy, _) => PulseRing(
-            color: t.acc,
-            radius: t.punchy ? 12 : 999,
-            child: SizedBox(
-              height: 52,
-              child: FilledButton.icon(
-                style: FilledButton.styleFrom(
-                    textStyle: slipText(16, 900), padding: const EdgeInsets.symmetric(horizontal: 22)),
-                onPressed: busy ? null : () => actions.scan(context),
-                icon: const SlipIcon(Symbols.document_scanner_rounded, size: 22),
-                label: const Text('Scan receipt'),
-              ),
-            ),
-          ),
-        ),
+        Text("Tap Scan below for your first receipt. Slip's hungry.", style: slipText(13.5, 700, color: t.ink2)),
         const SizedBox(height: 6),
         Wrap(alignment: WrapAlignment.center, children: [
           link('From gallery', () => actions.gallery(context)),
@@ -281,7 +263,8 @@ class _MoreMenu extends StatelessWidget {
   }
 }
 
-/// "Got a receipt? Let's read it." with Scan, Gallery and Type it.
+/// "Got a receipt? Tap Scan below." with Gallery and Type it (Scan itself is
+/// the bottom bar's button, on every screen).
 class _ScanCard extends StatelessWidget {
   const _ScanCard({required this.actions});
   final AppActions actions;
@@ -289,8 +272,6 @@ class _ScanCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = SlipTokens.of(context);
-    final heroBtn = t.punchy ? t.accInk : Colors.white;
-    final heroBtnInk = t.punchy ? t.acc : t.accDeep;
     final chip = t.punchy ? const Color(0x2E1A0E06) : const Color(0x38FFFFFF);
     return Stack(clipBehavior: Clip.none, children: [
       HeroCard(
@@ -299,31 +280,10 @@ class _ScanCard extends StatelessWidget {
           builder: (context, busy, _) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             Padding(
               padding: const EdgeInsets.only(right: 56),
-              child: Text("Got a receipt? Let's read it.",
+              child: Text(busy ? 'Reading…' : 'Got a receipt? Tap Scan below.',
                   style: slipText(22, 900, color: t.punchy ? t.accInk : Colors.white, height: 1.15)),
             ),
             const SizedBox(height: 14),
-            PulseRing(
-              color: heroBtn,
-              radius: t.punchy ? 12 : 999,
-              child: SizedBox(
-                height: 58,
-                child: FilledButton.icon(
-                  style: FilledButton.styleFrom(
-                    backgroundColor: heroBtn,
-                    foregroundColor: heroBtnInk,
-                    textStyle: slipText(18, 900),
-                  ),
-                  onPressed: busy ? null : () => actions.scan(context),
-                  icon: busy
-                      ? SizedBox.square(
-                          dimension: 22, child: CircularProgressIndicator(strokeWidth: 3, color: heroBtnInk))
-                      : const SlipIcon(Symbols.document_scanner_rounded, size: 26),
-                  label: Text(busy ? 'Reading…' : 'Scan receipt'),
-                ),
-              ),
-            ),
-            const SizedBox(height: 10),
             Row(children: [
               for (final (i, (icon, label, onTap)) in [
                 (Symbols.photo_library_rounded, 'Gallery', () => actions.gallery(context)),
