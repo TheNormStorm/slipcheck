@@ -178,8 +178,9 @@ class ReceiptParser {
   // Also "Sales Ta" and "5ales Ta%", a cut-off or misread SALES TAX.
   static final _tax = RegExp(r'\b(tax|gst|hst|pst|qst|vat|gct)\b|^\s*[s5]ales\s+ta\S?(?=\s|$)',
       caseSensitive: false);
+  // ("di scount": OCR splits the word.)
   static final _discount = RegExp(
-      r'\b(discount|savings?|coupon|promo|instant\s*saving|multi\s*buy|price\s*reduction)\b',
+      r'\b(di\s?scount|savings?|coupon|promo|instant\s*saving|multi\s*buy|price\s*reduction)\b',
       caseSensitive: false);
   // Payment and loyalty lines. Only at the start of a row, so items such as
   // "CARD - BIRTHDAY" or "CASHEWS" are kept.
