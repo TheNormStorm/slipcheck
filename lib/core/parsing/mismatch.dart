@@ -34,13 +34,15 @@ const _confusable = {
 
 /// Up to [max] fixes that each make [lines] (what each line cost, in
 /// cents) add up to [expected] exactly, most likely first: a misread
-/// amount, then a line read twice, else a missing line.
+/// amount, then a line read twice; a missing line whenever they come up
+/// short.
 List<Fix> suggestFixes(List<int> lines, int expected, {int max = 3}) {
   final diff = lines.fold(0, (s, c) => s + c) - expected;
   if (diff == 0) return const [];
   final out = <Fix>[];
   for (final (i, cents) in lines.indexed) {
-    if (cents <= 0) continue;
+    // An amount read on two lines (five buns at 156.53) vouches for itself.
+    if (cents <= 0 || lines.where((c) => c == cents).length > 1) continue;
     final digits = cents.toString();
     final candidates = {
       for (var p = 0; p < digits.length; p++)
@@ -59,8 +61,9 @@ List<Fix> suggestFixes(List<int> lines, int expected, {int max = 3}) {
     final same = [for (final (i, c) in lines.indexed) if (c == diff) i];
     same.sort((a, b) => lines.where((c) => c == lines[b]).length.compareTo(lines.where((c) => c == lines[a]).length));
     out.addAll(same.map(ReadTwice.new));
-  } else if (out.isEmpty) {
-    out.add(MissingLine(-diff));
+  } else {
+    // Always offered when short: a line lost in a photo is common.
+    return [...out.take(max - 1), MissingLine(-diff)];
   }
   return out.take(max).toList();
 }
