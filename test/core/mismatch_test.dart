@@ -31,8 +31,9 @@ void main() {
 
   test("repeated amounts aren't suspects; short means a line may be missing", () {
     // Five buns at 156.53 and a phone card lost under a signature.
-    final fixes = suggestFixes([15653, 15653, 15653, 15653, 15653, 58000, 50000], 15653 * 5 + 58000 + 150000);
-    expect(fixes.whereType<ChangeAmount>().where((f) => f.index < 5), isEmpty);
+    final lines = [15653, 15653, 15653, 15653, 15653, 58000, 10610, 24750, 19264, 50000];
+    final fixes = suggestFixes(lines, lines.fold(0, (s, c) => s + c) + 100000);
+    expect(fixes.whereType<ChangeAmount>(), isEmpty); // not "580.00 may be 1,580.00"
     expect(fixes.last, isA<MissingLine>());
     expect((fixes.last as MissingLine).cents, 100000);
   });
