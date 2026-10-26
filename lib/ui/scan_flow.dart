@@ -4,6 +4,7 @@ import 'package:google_mlkit_document_scanner/google_mlkit_document_scanner.dart
 import 'package:image_picker/image_picker.dart';
 
 import '../core/currency.dart';
+import '../core/parsing/page_quality.dart';
 import '../core/parsing/redaction.dart';
 import '../data/receipt_files.dart';
 import '../data/receipt_repository.dart';
@@ -118,6 +119,13 @@ class ScanSession {
         for (final c in result.parsed.corrections) 'Fixed so it adds up. $c Check it against the receipt.',
         for (final (i, page) in pages.indexed)
           if (page.problem != null) 'Photo ${i + 1}: ${page.problem}. Retake it?',
+        // Only worth retaking when it doesn't add up: another photo may have
+        // covered the curled part.
+        if (result.parsed.warnings.any((w) => w.startsWith('Items add up to')))
+          for (final (i, page) in pages.indexed)
+            if (page.problem == null && misPairedRows(page.rows) >= 2)
+              'Photo ${i + 1}: the paper looks curled or tilted, so some prices may be on the wrong '
+                  'lines. Flatten it and retake it straight on?',
         for (final join in result.stitch.joins)
           if (!join.found)
             'Photos ${join.page} and ${join.page + 1} do not overlap, so lines between '

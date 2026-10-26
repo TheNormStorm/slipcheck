@@ -49,6 +49,34 @@ void main() {
     expect(s.pageOfRow[29], 1);
   });
 
+  test('where one photo curls, the shared part is taken from the other', () {
+    // The middle photo's curled bottom gives each name the price below it;
+    // the next photo reads the same lines straight.
+    final curled = [
+      '2028750000000 CAB LEAN BEEF STEW  11.04 F', 'TAX GROCERY', '049705163535 MB SINGLE ROLL 130CT',
+      '049705155745 MB 8GLN WSTE BSKT BG  1.79 T', '017800194778 CAT CHOW  2.50 T',
+      '049705237687 MB FOIL HVY DTY 50SF  6.59 T', '810003440235 COMET  4.49 T', '030772222584 DAWN  1.49 T',
+      '3.29 T',
+    ];
+    final straight = [
+      '2028750000000 CAB LEAN BEEF STEW  11.04 F', 'TAX GROCERY', '049705163535 MB SINGLE ROLL 130CT  1.79 T',
+      '049705155745 MB 8GLN WSTE BSKT BG  2.50 T', '017800194778 CAT CHOW  6.59 T',
+      '049705237687 MB FOIL HVY DTY 50SF  4.49 T', '810003440235 COMET  1.49 T', '030772222584 DAWN  3.29 T',
+      'SUBTOTAL  20.70',
+    ];
+    final s = stitchPages([['BREAD  2.99 F', ...curled], straight]);
+    expect(s.rows, ['BREAD  2.99 F', ...straight]);
+  });
+
+  test('of two equally complete readings, the one further from its photo edge', () {
+    final s = stitchPages([
+      ['APPLES  1.00 F', 'BREAD  2.00 F', 'CHEESE  3.00 F', 'DUCK BREAST  4.00 F', 'ENGLISH MUFFINS 6PK  5.08 F'],
+      ['DUCK BREAST  4.00 F', 'ENGLISH MUFFINS 6PK  5.00 F', 'FIGS  6.00 F', 'GRAPES  7.00 F', 'HONEY  8.00 F'],
+    ]);
+    // The muffins are the first photo's last row, and the second photo's second.
+    expect(s.rows[4], 'ENGLISH MUFFINS 6PK  5.00 F');
+  });
+
   test('identical purchases in a row are not taken for an overlap', () {
     const item = 'MILK 2% 1L  4.99 F';
     final s = stitchPages([

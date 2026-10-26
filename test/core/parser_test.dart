@@ -71,6 +71,31 @@ void main() {
     });
   });
 
+  group('a totals block read with each amount beside the wrong label', () {
+    // Both as two photos of one crumpled Market Basket receipt read it.
+    const tilted = [
+      r'DAWN  3.29 T', '361.33', 'SUBTOTAL', '1.57', 'MA 6.25% Sal es Tax', '362.90', 'TOTAL', '362.90', 'Credit',
+      '362.90', 'TOTAL TENDERED', '0.00', 'Change',
+    ];
+    const shifted = [
+      r'DAWN  3.29 T', 'SUBTOTAL', 'MA 6.25% Sales Tax  361.33', 'TOTAL  1.57', '362.90', 'Credit  362.90',
+      'TOTAL TENDERED  362.90', '0.00', 'Change',
+    ];
+    for (final (how, rows) in [('amounts above their labels', tilted), ('amounts a line up', shifted)]) {
+      test(how, () {
+        final r = const ReceiptParser().parse(rows);
+        expect((r.subtotalCents, r.taxCents, r.totalCents), (36133, 157, 36290));
+        expect(r.taxLines.single.ratePercent, 6.25);
+        expect(r.items.map((i) => i.rawText), ['DAWN']);
+      });
+    }
+
+    test('left alone when it does not add up either way', () {
+      final r = const ReceiptParser().parse(['MILK 4.00 F', 'SUBTOTAL', 'TOTAL 5.00', '9.00']);
+      expect((r.subtotalCents, r.totalCents), (null, 500));
+    });
+  });
+
   group('a Jamaican supermarket: GCT at two rates, each lines, department headings', () {
     test('the whole receipt as read on a phone', () {
       final r = const ReceiptParser().parse(fixture('jm_supermarket_phone'));
@@ -148,6 +173,11 @@ void main() {
       expect(r.taxCents, 14188);
       expect(r.warnings, isEmpty);
       expect(r.taxCheck.agrees, isTrue);
+    });
+
+    test("SCALLIONS 149 F: a price that lost its point, before this receipt's tax code", () {
+      final r = const ReceiptParser().parse(['4068 SCALLIONS 149 F', 'LIMES 0.99 F', 'LEMONS 0.79 F', 'TOTAL 3.27']);
+      expect(r.items.map((i) => i.lineTotalCents), [149, 99, 79]);
     });
 
     test('a discount whose word was split and minus lost', () {
