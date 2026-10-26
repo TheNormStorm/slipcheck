@@ -19,4 +19,8 @@ void main() {
     expect(pageProblem([for (var i = 0; i < 10; i++) line(40, confidence: 0.3)]),
         'Blurry or faded');
   });
+
+  test('rows paired with a neighbour\'s price', () {
+    expect(misPairedRows(['ICE CREAM  4.99 T', '3.29 T', 'CREST  4.99 T', '361.33', 'SUBTOTAL  361.33']), 2);
+  });
 }

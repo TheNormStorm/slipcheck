@@ -96,6 +96,8 @@ final readings = [
       warp: then(then(keystone(-0.00007, cx: 1150, y0: 4000), curl(-50, cx: 1150, halfWidth: 600)),
           rotation(-10, cx: 1150))),
   Reading(marketBasket, 'iPhone, Text as read', ['market_basket3_iphone.txt']),
+  Reading(marketBasket, '3 photos, crumpled and tilted, Android emulator',
+      ['market_basket4_c.json', 'market_basket4_b.json', 'market_basket4_a.json']),
   Reading(marketBasket, '2 faded photos, not overlapping', ['market_basket2_bottom.json', 'market_basket2_top.json']),
   Reading(marketBasket, 'top half, 1 photo', ['market_basket_mlkit.json'], partial: true),
   Reading(marketBasket, 'top half, 3 photos',

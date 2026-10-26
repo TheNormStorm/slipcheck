@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import '../categories.dart';
 import '../money.dart';
 import 'checks.dart';
@@ -159,6 +161,8 @@ class ReceiptParser {
   static final _letters = RegExp(r'[A-Za-z]{2,}');
   // "SCALLIONS 1.4 F": one digit of the cents, then a tax code.
   static final _partialAmount = RegExp(r'^(.*?)\s*\$?(\d{1,4}[.,]\d)\s*([A-Z])$');
+  // "SCALLIONS 149 F": a price whose point was lost, then a tax code.
+  static final _pointlessAmount = RegExp(r'^(.*?)\s+(\d{3,4})\s*([A-Z]\d?)$');
   // A tax code printed after a price: "4.99 F", "6.59 T", "156.53 T3".
   static final _taxCodeAfterPrice = RegExp(r'\d[.,]\d{2}\s*([A-Z]\d?)$');
   // Notes printed under an item that are not part of its name: "Manual
@@ -402,6 +406,14 @@ class ReceiptParser {
       List<int>? lostDigit;
       var taxCode = amountMatch?.group(3);
       if (amount == null) {
+        final p = _pointlessAmount.firstMatch(rest);
+        if (p != null && taxCodes.contains(p.group(3)) && _letters.hasMatch(p.group(1)!)) {
+          amount = int.parse(p.group(2)!);
+          desc = p.group(1)!.trim();
+          taxCode = p.group(3);
+        }
+      }
+      if (amount == null) {
         final m = _partialAmount.firstMatch(rest);
         if (m != null && taxCodes.contains(m.group(3)) && _letters.hasMatch(m.group(1)!)) {
           final tenths = parseCents('${m.group(2)}0')!;
@@ -522,7 +534,7 @@ class ReceiptParser {
           flushEach();
           section = desc;
           pendingNames.clear();
-        } else if (rowHasName) {
+        } else if (rowHasName && !_isSummaryLabel(desc)) {
           pendingNames.add(desc);
         }
         continue;
@@ -575,6 +587,7 @@ class ReceiptParser {
       pendingQty = null;
     }
 
+    _totalsByOrder(receipt, cleaned);
     // Only "Items Subtotal" was read: the subtotal is it less the discounts.
     if (receipt.subtotalCents == null && grossSubtotal != null) {
       receipt.subtotalCents = grossSubtotal - receipt.items.fold(0, (s, i) => s + i.discountCents);
@@ -652,6 +665,77 @@ class ReceiptParser {
         ..lineTotalCents = alt
         ..unitPriceCents = line.quantity == 1 ? null : (alt / line.quantity).round();
     }
+  }
+
+  // "Change", "Credit", "TOTAL TENDERED": the rest of a totals block.
+  static final _change = RegExp(r'^\s*change\b', caseSensitive: false);
+
+  /// A label of the totals block, read without its amount: never an item's
+  /// name ("361.33" / "SUBTOTAL" on a tilted photo).
+  bool _isSummaryLabel(String desc) =>
+      _subtotal.hasMatch(desc) ||
+      _total.hasMatch(desc) ||
+      _change.hasMatch(desc) ||
+      _nonItem.hasMatch(desc) ||
+      (_tax.hasMatch(desc) && (desc.contains('%') || !_hasItemWords(desc)));
+
+  /// When the subtotal, tax and total read don't add up (a tilted or curling
+  /// photo pairs each label with the amount of the line above or below),
+  /// pairs the totals block's labels and amounts in the order they are
+  /// printed, and keeps that only if it adds up: subtotal + tax = total.
+  void _totalsByOrder(ParsedReceipt r, List<String> rows) {
+    final sub = r.subtotalCents, tax = r.taxCents ?? 0, total = r.totalCents;
+    if (total != null && tax < total && (sub == null || sub + tax == total)) return;
+
+    var start = rows.indexWhere((row) {
+      final label = _trailingAmount.firstMatch(row)?.group(1) ?? row;
+      return _subtotal.hasMatch(label) ||
+          (_total.hasMatch(label) && !_notTotal.hasMatch(label)) ||
+          (_tax.hasMatch(label) && label.contains('%'));
+    });
+    if (start < 0) return;
+    bool amountOnly(String row) => !_letters.hasMatch(row) && _trailingAmount.hasMatch(row);
+    if (start > 0 && amountOnly(rows[start - 1])) start--;
+    var end = rows.indexWhere(_change.hasMatch, start);
+    if (end < 0) end = math.min(rows.length - 1, start + 14);
+    if (end + 1 < rows.length && amountOnly(rows[end + 1])) end++;
+
+    final labels = <String>[], amounts = <int>[];
+    for (final row in rows.sublist(start, end + 1)) {
+      final m = _trailingAmount.firstMatch(row);
+      final label = (m?.group(1) ?? row).trim();
+      if (_letters.hasMatch(label)) labels.add(label);
+      if (m != null) amounts.add(parseCents(m.group(2)!)!);
+    }
+    if (labels.length != amounts.length) return;
+
+    int? newSub, newTotal;
+    final taxes = <(String, int)>[];
+    for (final (i, label) in labels.indexed) {
+      if (_subtotal.hasMatch(label) && !_itemsSubtotal.hasMatch(label)) {
+        newSub ??= amounts[i];
+      } else if (_total.hasMatch(label) && !_notTotal.hasMatch(label)) {
+        newTotal ??= amounts[i];
+      } else if (_tax.hasMatch(label)) {
+        taxes.add((label, amounts[i]));
+      }
+    }
+    final newTax = taxes.fold(0, (s, t) => s + t.$2);
+    if (newSub == null || newTotal == null || newSub + newTax != newTotal) return;
+    r
+      ..subtotalCents = newSub
+      ..taxCents = taxes.isEmpty ? null : newTax
+      ..totalCents = newTotal;
+    r.taxLines
+      ..clear()
+      ..addAll([
+        for (final (label, cents) in taxes)
+          TaxLine(cents,
+              ratePercent: switch (_taxRate.firstMatch(label)?.group(1)) {
+                final rate? => double.parse(rate.replaceAll(',', '.')),
+                null => null,
+              }),
+      ]);
   }
 
   /// Makes an item from name rows whose price was not read, pricing it from

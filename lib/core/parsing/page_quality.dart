@@ -1,3 +1,4 @@
+import '../categories.dart';
 import 'ocr_line.dart';
 
 /// Why a photo is unlikely to read well, or null when it looks fine.
@@ -12,3 +13,17 @@ String? pageProblem(List<OcrLine> lines) {
   if (conf.length >= 3 && conf[conf.length ~/ 2] < 0.5) return 'Blurry or faded';
   return null;
 }
+
+/// Rows that show a photo pairing names with a neighbour's price, as a
+/// curling or tilted photo does: a department heading with a price
+/// ("ICE CREAM  4.99 T"), or a price and tax code with no name ("3.29 T").
+/// (A totals block's amounts on rows of their own have no code.)
+bool isMisPaired(String row) {
+  final m = RegExp(r'^(.*?)\s*\$?\d{1,6}[.,]\d{2}\s*([A-Z]?)\s*$').firstMatch(row);
+  if (m == null) return false;
+  final name = m.group(1)!.trim();
+  return name.isEmpty ? m.group(2)!.isNotEmpty : isDepartmentHeading(name);
+}
+
+/// How many of [rows] look paired with the wrong price (see [isMisPaired]).
+int misPairedRows(Iterable<String> rows) => rows.where(isMisPaired).length;

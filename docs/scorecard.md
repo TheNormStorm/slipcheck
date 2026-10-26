@@ -3,7 +3,7 @@
 Every receipt reading we have, read the way the app reads it, against what the
 paper receipt says. Regenerate with `UPDATE_SCORECARD=1 flutter test test/scorecard`.
 
-**15 of 17 readings exact.** Currency wrong: 0. Tax or item-count check failing: 2.
+**16 of 18 readings exact.** Currency wrong: 0. Tax or item-count check failing: 2.
 
 "Other checks": the printed tax rate of the taxed lines gives the printed tax; the
 quantities match the printed item count. "–" means the receipt (or what was kept
@@ -18,6 +18,7 @@ of it: the card section, where some tills print the count, is cut) gives nothing
 | Market Basket, Oct 22 | 3 photos, receipt curling | 64 of 64 | 361.33 | 361.33 | ✓ exact | ✓ USD | tax ✓, count – |
 | Market Basket, Oct 22 | 3 photos, turned, tipped and curling | 64 of 64 | 361.33 | 361.33 | ✓ exact | ✓ USD | tax ✓, count – |
 | Market Basket, Oct 22 | iPhone, Text as read | 64 of 64 | 361.33 | 361.33 | ✓ exact (4 prices fixed by the check) | ✓ USD | tax ✓, count – |
+| Market Basket, Oct 22 | 3 photos, crumpled and tilted, Android emulator | 64 of 64 | 361.33 | 361.33 | ✓ exact | ✓ USD | tax ✓, count – |
 | Market Basket, Oct 22 | 2 faded photos, not overlapping | 60 of 64 | 318.56 | 361.33 | ✗ off by 42.77, 4 lines missing | ✓ USD | tax ✗, count – |
 | Market Basket, Oct 22 | top half, 1 photo | 33 of 64 | 169.86 | 361.33 | not checked: photos stop before the total | ✓ USD | tax –, count – |
 | Market Basket, Oct 22 | top half, 3 photos | 33 of 64 | 169.86 | 361.33 | not checked: photos stop before the total | ✓ USD | tax –, count – |
