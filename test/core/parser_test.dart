@@ -175,6 +175,17 @@ void main() {
       expect(r.taxCheck.agrees, isTrue);
     });
 
+    test('the item count on the row below or above its label', () {
+      for (final rows in [
+        ['MILK 4.00 F', 'TOTAL 4.00', 'Number of Items', '1'],
+        ['MILK 4.00 F', 'TOTAL 4.00', '1', 'Number of Items'],
+      ]) {
+        expect(const ReceiptParser().parse(rows).printedItemCount, 1, reason: rows.join(' / '));
+      }
+      // A number that isn't next to it is not taken.
+      expect(const ReceiptParser().parse(['Number of Items', 'Thank you', '12']).printedItemCount, isNull);
+    });
+
     test("SCALLIONS 149 F: a price that lost its point, before this receipt's tax code", () {
       final r = const ReceiptParser().parse(['4068 SCALLIONS 149 F', 'LIMES 0.99 F', 'LEMONS 0.79 F', 'TOTAL 3.27']);
       expect(r.items.map((i) => i.lineTotalCents), [149, 99, 79]);

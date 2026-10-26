@@ -327,9 +327,20 @@ class ReceiptParser {
       return true;
     }
 
-    for (final row in cleaned) {
+    for (final (i, row) in cleaned.indexed) {
       final count = _itemCount.firstMatch(row);
       if (count != null) receipt.printedItemCount ??= int.parse(count.group(1)!);
+      // On a tilted photo the number can land on the row above or below
+      // its label ("Number of Items" / "108").
+      if (receipt.printedItemCount == null && _itemCount.hasMatch('$row 0')) {
+        for (final j in [i + 1, i - 1]) {
+          final n = j >= 0 && j < cleaned.length ? RegExp(r'^\s*(\d{1,4})\s*$').firstMatch(cleaned[j]) : null;
+          if (n != null) {
+            receipt.printedItemCount = int.parse(n.group(1)!);
+            break;
+          }
+        }
+      }
     }
 
     void recordTax(String desc, int cents) {

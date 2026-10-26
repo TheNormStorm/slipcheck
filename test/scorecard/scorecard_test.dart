@@ -69,6 +69,8 @@ class Reading {
 
 const marketBasket =
     Printed('Market Basket, Oct 22', lines: 64, itemsCents: 36133, totalCents: 36290, currency: 'USD');
+const marketBasketSep =
+    Printed('Market Basket, Sep 25', lines: 80, itemsCents: 42712, totalCents: 42929, currency: 'USD');
 const cmMeats = Printed('C&M Meats, Oct 24', lines: 3, itemsCents: 546000, totalCents: 546000, currency: 'JMD');
 const jmSupermarket = Printed('Jamaican supermarket, GCT at 15% and 25%',
     lines: 53, itemsCents: 1803888, totalCents: 2009586, currency: 'JMD');
@@ -102,6 +104,8 @@ final readings = [
   Reading(marketBasket, 'top half, 1 photo', ['market_basket_mlkit.json'], partial: true),
   Reading(marketBasket, 'top half, 3 photos',
       ['market_basket_part1.json', 'market_basket_part2.json', 'market_basket_part3.json'], partial: true),
+  Reading(marketBasketSep, '4 photos, Android emulator',
+      ['market_basket5_4.json', 'market_basket5_3.json', 'market_basket5_2.json', 'market_basket5_1.json']),
   Reading(cmMeats, '1 photo, Android emulator', ['cm_meats_mlkit.json']),
   Reading(cmMeats, 'Android phone, Text as read', ['cm_meats_phone.txt']),
   Reading(cmMeats, 'iPhone, Text as read', ['cm_meats_iphone.txt']),

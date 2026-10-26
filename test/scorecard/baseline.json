@@ -10,6 +10,7 @@
   "market_basket2_bottom.json+market_basket2_top.json": "off USD false null",
   "market_basket_mlkit.json": "unchecked USD null null",
   "market_basket_part1.json+market_basket_part2.json+market_basket_part3.json": "unchecked USD null null",
+  "market_basket5_4.json+market_basket5_3.json+market_basket5_2.json+market_basket5_1.json": "exact USD true null",
   "cm_meats_mlkit.json": "exact JMD null null",
   "cm_meats_phone.txt": "exact JMD null null",
   "cm_meats_iphone.txt": "exact JMD null null",
