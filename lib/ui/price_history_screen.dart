@@ -13,6 +13,7 @@ import '../core/text.dart';
 import '../data/receipt_repository.dart';
 import 'chart_palette.dart';
 import 'components/kit.dart';
+import 'currency_scope.dart';
 import 'motion/motion.dart';
 import 'theme/app_theme.dart';
 import 'theme/tokens.dart';
@@ -249,7 +250,7 @@ class _PriceHistoryScreenState extends State<PriceHistoryScreen> {
                   label: store,
                   color: i == 0 && usual.length > 1 ? t.downSoft : null,
                   ink: i == 0 && usual.length > 1 ? t.downText : null,
-                  value: Text('${formatCents(price.round())}$per', style: slipText(20, 900, tabular: true)),
+                  value: Text('${money(context, price.round(), sameUnit.last.currency)}$per', style: slipText(20, 900, tabular: true)),
                   footer: Text(
                     usual.length == 1
                         ? 'usual'
@@ -291,7 +292,7 @@ class _PriceHistoryScreenState extends State<PriceHistoryScreen> {
                     child: Text('${DateFormat.yMMMd().format(x.date)} · ${x.storeName ?? 'Unknown store'}',
                         style: slipText(13, 700, color: t.ink)),
                   ),
-                  Text('${formatCents(x.unitPriceCents)}${x.unit == 'each' ? '' : '/${x.unit}'}',
+                  Text('${money(context, x.unitPriceCents, x.currency)}${x.unit == 'each' ? '' : '/${x.unit}'}',
                       style: slipText(13.5, 900, color: t.ink, tabular: true)),
                 ]),
               ),
@@ -326,7 +327,10 @@ class _PriceCard extends StatelessWidget {
         // Wraps so a long "since" chip drops below the price on a narrow phone.
         Wrap(crossAxisAlignment: WrapCrossAlignment.center, spacing: 10, runSpacing: 4, children: [
           Row(mainAxisSize: MainAxisSize.min, children: [
-            CountUp(cents: latest, style: slipText(32, 900, color: t.ink, tabular: true)),
+            CountUp(
+                cents: latest,
+                prefix: symbolFor(context, points.last.currency),
+                style: slipText(32, 900, color: t.ink, tabular: true)),
             if (per.isNotEmpty) Text(per, style: slipText(16, 900, color: t.ink2)),
           ]),
           if (change != null && (change.abs() >= .01))
@@ -353,7 +357,8 @@ class _PriceCard extends StatelessWidget {
                 Expanded(
                   child: Column(mainAxisAlignment: MainAxisAlignment.end, children: [
                     FittedBox(
-                      child: Text(formatCents(p.unitPriceCents), style: slipText(11, 900, color: t.ink, tabular: true)),
+                      child: Text(money(context, p.unitPriceCents, p.currency),
+                          style: slipText(11, 900, color: t.ink, tabular: true)),
                     ),
                     const SizedBox(height: 3),
                     GrowIn(

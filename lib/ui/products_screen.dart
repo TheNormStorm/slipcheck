@@ -3,11 +3,11 @@ import 'package:material_symbols_icons/symbols.dart';
 
 import '../core/analytics/insights.dart';
 import '../core/categories.dart';
-import '../core/money.dart';
 import '../core/text.dart';
 import '../data/receipt_repository.dart';
 import 'chart_palette.dart';
 import 'components/kit.dart';
+import 'currency_scope.dart';
 import 'motion/motion.dart';
 import 'price_history_screen.dart';
 import 'reload_on_change.dart';
@@ -247,7 +247,7 @@ class _ItemRow extends StatelessWidget {
     return Semantics(
       button: true,
       label: '$name, ${p.category.label}, ${plural(stores, 'store')}'
-          '${price == null ? '' : ', ${formatCents(price)}${unit == 'each' ? '' : ' per $unit'}'}'
+          '${price == null ? '' : ', ${money(context, price, tr?.currency ?? 'USD')}${unit == 'each' ? '' : ' per $unit'}'}'
           '${change.isEmpty ? '' : ', $change'}',
       excludeSemantics: true,
       child: SlipCard(
@@ -270,10 +270,12 @@ class _ItemRow extends StatelessWidget {
           ),
           if (tr != null) Sparkline(values: tr.recent, trend: dir),
           const SizedBox(width: 12),
-          SizedBox(
-            width: 58,
+          // At least 58 wide so prices line up; wider for a symbol ("J$950.00").
+          ConstrainedBox(
+            constraints: const BoxConstraints(minWidth: 58),
             child: Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-              Text(price == null ? '—' : formatCents(price), style: slipText(14.5, 900, color: t.ink, tabular: true)),
+              Text(price == null ? '—' : money(context, price, tr?.currency ?? CurrencyScope.mainOf(context)),
+                  maxLines: 1, softWrap: false, style: slipText(14.5, 900, color: t.ink, tabular: true)),
               if (change.isNotEmpty) Text(change, style: slipText(11.5, 900, color: changeColor, tabular: true)),
             ]),
           ),

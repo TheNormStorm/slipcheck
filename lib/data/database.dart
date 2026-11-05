@@ -2,6 +2,7 @@ import 'package:drift/drift.dart';
 import 'package:drift_flutter/drift_flutter.dart';
 
 import '../core/categories.dart';
+import '../core/currency.dart';
 import '../core/parsing/receipt_parser.dart';
 import '../core/parsing/redaction.dart';
 
@@ -118,7 +119,7 @@ class AppDatabase extends _$AppDatabase {
       : super(executor ?? driftDatabase(name: 'slipcheck'));
 
   @override
-  int get schemaVersion => 5;
+  int get schemaVersion => 6;
 
   /// For receipts saved before version 3: re-reads each receipt's stored OCR
   /// text to recover the barcode and department heading of every line, then
@@ -173,6 +174,16 @@ class AppDatabase extends _$AppDatabase {
             }
           }
           if (from < 5) await m.createTable(settings);
+          if (from < 6) {
+            // Every receipt used to be saved as US dollars. Work out each
+            // one's currency from its text where it says.
+            for (final r in await select(receipts).get()) {
+              final found = r.ocrText == null ? null : detectCurrency(r.ocrText!.split('\n'));
+              if (found != null && found != r.currency) {
+                await (update(receipts)..where((t) => t.id.equals(r.id))).write(ReceiptsCompanion(currency: Value(found)));
+              }
+            }
+          }
         },
         beforeOpen: (details) async {
           await customStatement('PRAGMA foreign_keys = ON');

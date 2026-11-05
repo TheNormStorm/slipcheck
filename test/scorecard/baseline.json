@@ -1,0 +1,23 @@
+{
+  "market_basket3_top.json+market_basket3_middle.json+market_basket3_bottom.json": "exact USD true null",
+  "market_basket3_bottom.json+market_basket3_top.json+market_basket3_middle.json": "exact USD true null",
+  "market_basket3_top.json+market_basket3_middle.json+market_basket3_bottom.json / 3 photos, phone turned 12°": "exact USD true null",
+  "market_basket3_top.json+market_basket3_middle.json+market_basket3_bottom.json / 3 photos, phone tipped towards the top": "exact USD true null",
+  "market_basket3_top.json+market_basket3_middle.json+market_basket3_bottom.json / 3 photos, receipt curling": "exact USD true null",
+  "market_basket3_top.json+market_basket3_middle.json+market_basket3_bottom.json / 3 photos, turned, tipped and curling": "exact USD true null",
+  "market_basket3_iphone.txt": "exact USD true null",
+  "market_basket4_c.json+market_basket4_b.json+market_basket4_a.json": "exact USD true null",
+  "market_basket2_bottom.json+market_basket2_top.json": "off USD false null",
+  "market_basket_mlkit.json": "unchecked USD null null",
+  "market_basket_part1.json+market_basket_part2.json+market_basket_part3.json": "unchecked USD null null",
+  "market_basket5_4.json+market_basket5_3.json+market_basket5_2.json+market_basket5_1.json": "exact USD true null",
+  "cm_meats_mlkit.json": "exact JMD null null",
+  "cm_meats_phone.txt": "exact JMD null null",
+  "cm_meats_iphone.txt": "exact JMD null null",
+  "jm_supermarket_phone.txt": "exact JMD true null",
+  "jm_supermarket_top.json+jm_supermarket_middle.json+jm_supermarket_bottom.json": "off JMD false null",
+  "grocery_basic.txt": "exact CAD true true",
+  "mlkit_grocery_basic.txt": "exact CAD true true",
+  "qty_after_item.txt": "exact - null null",
+  "dayfirst_comma.txt": "exact - null null"
+}

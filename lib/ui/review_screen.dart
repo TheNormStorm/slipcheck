@@ -3,14 +3,21 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart' show DateFormat;
 import 'package:material_symbols_icons/symbols.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../core/analytics/purchase.dart';
 import '../core/analytics/vs_usual.dart';
+import '../core/currency.dart';
 import '../core/matching/product_matcher.dart';
 import '../core/money.dart';
+import '../core/parsing/checks.dart';
 import '../core/text.dart';
+import '../core/parsing/mismatch.dart';
+import '../data/device_currency.dart';
+import '../data/receipt_files.dart';
 import '../data/receipt_repository.dart';
 import 'components/kit.dart';
+import 'currency_scope.dart';
 import 'components/dialogs.dart';
 import 'line_item_row.dart';
 import 'motion/motion.dart';
@@ -191,8 +198,16 @@ class _ReviewScreenState extends State<ReviewScreen> {
     final matcher = await widget.repo.loadMatcher();
     final storeId = await widget.repo.findStoreId(draft.storeName);
     final history = await widget.repo.purchases();
+    // The receipt didn't say: the store's currency, else the one you use
+    // most, else the phone's region.
+    final currency = draft.currencyKnown
+        ? draft.currency
+        : (storeId == null ? null : await widget.repo.storeCurrency(storeId)) ??
+            await widget.repo.mainCurrency() ??
+            deviceCurrency();
     if (mounted) {
       setState(() {
+        draft.currency = currency;
         _matcher = matcher;
         _storeId = storeId;
         _usual = UsualPrices(mergeByProduct(history.where((p) => p.receiptId != widget.editingReceiptId)));
@@ -229,6 +244,108 @@ class _ReviewScreenState extends State<ReviewScreen> {
 
   /// What was paid: the receipt's total, else the items plus tax.
   int get _payCents => draft.totalCents ?? _itemsSum + (draft.taxCents ?? 0);
+
+  List<CheckLine> get _checkLines => [
+        for (final l in draft.lines)
+          CheckLine(
+              cents: l.netCents,
+              quantity: l.quantity,
+              unit: l.unit,
+              taxCode: l.taxCode,
+              taxCodeUnknown: l.taxCodeUnknown),
+      ];
+
+  /// The receipt's own checks besides the subtotal, as they stand with the
+  /// corrections made so far: (passed, what it says).
+  List<(bool, String)> get _checks {
+    // The tax as it now stands, at the rate printed.
+    final printed = draft.taxLines;
+    final taxLines = printed.length == 1 && draft.taxCents != null
+        ? [TaxLine(draft.taxCents!, ratePercent: printed.single.ratePercent)]
+        : printed;
+    final tax = checkTax(_checkLines, taxLines);
+    final count = checkCount(_checkLines, draft.printedItemCount);
+    final codes = tax.taxedCodes.join(', ');
+    final rates = [for (final t in taxLines) if (t.ratePercent != null) _percent(t.ratePercent!)];
+    final how = tax.ratePercent != null
+        ? ': ${_percent(tax.ratePercent!)} of the $codes lines'
+        : rates.length > 1
+            ? ' at both rates printed (${rates.join(' and ')})'
+            : '';
+    return [
+      if (tax.agrees == true) (true, 'Tax checks out$how'),
+      if (tax.agrees == false) (false, "Tax doesn't match the rate printed: a taxed line may be misread"),
+      if (count == true) (true, '${draft.printedItemCount} items, as printed'),
+      if (count == false)
+        (false, 'The receipt says ${draft.printedItemCount} items; ${unitCount(_checkLines)} read: check the quantities'),
+    ];
+  }
+
+  static String _percent(double p) => '${p == p.roundToDouble() ? p.toInt() : p}%';
+
+  Future<void> _pickCurrency() async {
+    final t = SlipTokens.of(context);
+    final picked = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) => SafeArea(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * .7),
+          child: ListView(shrinkWrap: true, padding: const EdgeInsets.fromLTRB(8, 0, 8, 12), children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+              child: Text('Currency', style: slipText(20, 900, color: t.ink)),
+            ),
+            for (final MapEntry(key: code, value: symbol) in knownCurrencies.entries)
+              ListTile(
+                leading: SizedBox(width: 44, child: Text(symbol, style: slipText(15, 900, color: t.ink2))),
+                title: Text(code, style: slipText(15, 900, color: t.ink)),
+                trailing: code == draft.currency ? SlipIcon(Symbols.check_rounded, color: t.accText) : null,
+                onTap: () => Navigator.pop(context, code),
+              ),
+            ListTile(
+              leading: SizedBox(width: 44, child: SlipIcon(Symbols.edit_rounded, color: t.ink2)),
+              title: Text('Another (3-letter code)', style: slipText(15, 800, color: t.ink)),
+              onTap: () => Navigator.pop(context, ''),
+            ),
+          ]),
+        ),
+      ),
+    );
+    if (picked == null || !mounted) return;
+    var code = picked;
+    if (code.isEmpty) {
+      final controller = TextEditingController();
+      code = (await showDialog<String>(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('Currency code'),
+              content: TextField(
+                controller: controller,
+                autofocus: true,
+                maxLength: 3,
+                textCapitalization: TextCapitalization.characters,
+                decoration: const InputDecoration(hintText: 'e.g. MXN'),
+              ),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+                FilledButton(
+                  onPressed: () => Navigator.pop(context, controller.text.trim().toUpperCase()),
+                  child: const Text('OK'),
+                ),
+              ],
+            ),
+          )) ??
+          '';
+      controller.dispose();
+      if (!RegExp(r'^[A-Z]{3}$').hasMatch(code)) return;
+    }
+    setState(() {
+      draft
+        ..currency = code
+        ..currencyKnown = true;
+    });
+  }
 
   Future<void> _editStore() async {
     final controller = TextEditingController(text: draft.storeName);
@@ -316,7 +433,7 @@ class _ReviewScreenState extends State<ReviewScreen> {
         icon: SlipIcon(Symbols.content_copy_rounded, size: 32, color: t.warning),
         title: const Text('Already saved?'),
         content: Text('${dup.storeName ?? 'This store'}, ${DateFormat.MMMd().format(dup.purchasedAt)}, '
-            '${formatCents(dup.spentCents)} is in already. Saving twice doubles it.'),
+            '${money(context, dup.spentCents, dup.currency)} is in already. Saving twice doubles it.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Save anyway')),
           FilledButton(onPressed: () => Navigator.pop(context, false), child: const Text("Don't save")),
@@ -333,7 +450,7 @@ class _ReviewScreenState extends State<ReviewScreen> {
     final save = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('Off by ${formatCents((_itemsSum - expected).abs())}, save anyway?'),
+        title: Text('Off by ${groupedAmount((_itemsSum - expected).abs())}, save anyway?'),
         content: const Text("The items don't add up to the receipt. A line may be missing, doubled "
             "or misread. Faded receipts sometimes can't be read in full."),
         actions: [
@@ -397,6 +514,43 @@ class _ReviewScreenState extends State<ReviewScreen> {
     onSaved?.call(shown ?? note);
   }
 
+  /// Applies a suggestion that makes the items add up.
+  Future<void> _applyFix(Fix fix) async {
+    switch (fix) {
+      case ChangeAmount(:final index, :final cents):
+        final line = draft.lines[index];
+        setState(() {
+          line
+            ..lineTotalCents = cents + line.discountCents
+            ..unitPriceCents = null;
+        });
+      case ReadTwice(:final index):
+        setState(() => draft.lines.removeAt(index));
+      case MissingLine(:final cents):
+        final line = DraftLine(name: '', lineTotalCents: cents);
+        setState(() => draft.lines.add(line));
+        await _editLine(line);
+    }
+  }
+
+  /// Shares what OCR read from each photo, card section already removed,
+  /// so a receipt that reads badly can be looked at elsewhere. The user
+  /// picks where it goes.
+  Future<void> _sendDetails() async {
+    final files = [
+      for (final page in widget.session!.pages)
+        if (File(ReceiptFiles.ocrPathFor(page.imagePath)).existsSync()) XFile(ReceiptFiles.ocrPathFor(page.imagePath)),
+    ];
+    if (files.isEmpty) return;
+    await SharePlus.instance.share(ShareParams(
+      files: files,
+      title: 'Slipcheck reading details',
+      subject: 'Slipcheck reading details',
+      text: 'What Slipcheck read from ${plural(files.length, 'photo')} of a ${draft.storeName} receipt. '
+          'Card details are already removed.',
+    ));
+  }
+
   Future<void> _editLine(DraftLine line) async {
     final id = _productOf(line, _match(line));
     final result = await showModalBottomSheet<String>(
@@ -419,7 +573,7 @@ class _ReviewScreenState extends State<ReviewScreen> {
   }
 
   Future<void> _addLine() async {
-    final line = DraftLine(name: '', lineTotalCents: 0);
+    final line = DraftLine(name: '', lineTotalCents: 0, taxCodeUnknown: true);
     setState(() => draft.lines.add(line));
     await _editLine(line);
   }
@@ -489,13 +643,25 @@ class _ReviewScreenState extends State<ReviewScreen> {
                   checkedAgainstSubtotal: draft.subtotalCents != null,
                   ready: _matcher != null,
                   manual: session == null,
+                  currency: draft.currency,
+                  checks: _matcher == null ? const [] : _checks,
                   onStore: _editStore,
                   onDate: _editDate,
+                  onCurrency: _pickCurrency,
                   onTotals: _editTotals,
                 ),
                 for (final note in session?.notes() ?? const <String>[]) ...[
                   const SizedBox(height: 8),
                   _Warning(text: note, onTap: _reading ? null : _photosSheet),
+                ],
+                if (_matcher != null && _expected != null && _expected != _itemsSum && draft.lines.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  _Suggestions(
+                    lines: draft.lines,
+                    fixes: suggestFixes([for (final l in draft.lines) l.netCents], _expected!),
+                    onApply: _applyFix,
+                    onSendDetails: session == null ? null : _sendDetails,
+                  ),
                 ],
                 const SizedBox(height: 10),
                 SlipCard(
@@ -526,6 +692,15 @@ class _ReviewScreenState extends State<ReviewScreen> {
                 ),
                 const SizedBox(height: 10),
                 _TotalsRow(draft: draft, onTap: _editTotals),
+                if (session != null)
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton.icon(
+                      onPressed: _sendDetails,
+                      icon: const SlipIcon(Symbols.ios_share_rounded, size: 18),
+                      label: const Text('Send reading details'),
+                    ),
+                  ),
                 if (draft.ocrText != null) ...[
                   const SizedBox(height: 6),
                   Theme(
@@ -562,7 +737,7 @@ class _ReviewScreenState extends State<ReviewScreen> {
               icon: _saving
                   ? const SizedBox.square(dimension: 20, child: CircularProgressIndicator(strokeWidth: 3))
                   : const SlipIcon(Symbols.check_rounded, size: 22),
-              label: Text(_editing ? 'Save changes' : 'Save · ${formatCents(_payCents)}'),
+              label: Text(_editing ? 'Save changes' : 'Save · ${money(context, _payCents, draft.currency)}'),
             ),
           ),
         ),
@@ -607,11 +782,17 @@ class _SummaryCard extends StatelessWidget {
     required this.checkedAgainstSubtotal,
     required this.ready,
     required this.manual,
+    required this.currency,
+    required this.checks,
     required this.onStore,
     required this.onDate,
+    required this.onCurrency,
     required this.onTotals,
   });
 
+  final String currency;
+  final List<(bool, String)> checks;
+  final VoidCallback onCurrency;
   final String store;
   final DateTime date;
   final int payCents, itemCount, itemsSum;
@@ -643,7 +824,7 @@ class _SummaryCard extends StatelessWidget {
           bg: Colors.white,
           fg: t.downText,
           icon: Symbols.verified_rounded,
-          text: 'Matches ${checkedAgainstSubtotal ? 'subtotal' : 'total'} ${formatCents(e)}',
+          text: 'Matches ${checkedAgainstSubtotal ? 'subtotal' : 'total'} ${groupedAmount(e)}',
         ),
       );
     } else {
@@ -653,7 +834,7 @@ class _SummaryCard extends StatelessWidget {
           bg: Colors.white,
           fg: t.upText,
           icon: Symbols.error_rounded,
-          text: 'Receipt says ${formatCents(e)}: off by ${formatCents((itemsSum - e).abs())}',
+          text: 'Receipt says ${groupedAmount(e)}: off by ${groupedAmount((itemsSum - e).abs())}',
         ),
       );
     }
@@ -684,21 +865,46 @@ class _SummaryCard extends StatelessWidget {
               ),
             ),
           ),
-        ]),
-        const SizedBox(height: 2),
-        Row(crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [
-          CountUp(cents: payCents, ms: 1200, style: slipText(40, 900, color: onAcc, tabular: true, height: 1.1)),
-          const SizedBox(width: 8),
-          Flexible(
-            child: Text(plural(itemCount, 'item'),
-                maxLines: 1, overflow: TextOverflow.ellipsis, style: slipText(13, 800, color: t.onAccSmall)),
+          const SizedBox(width: 6),
+          Material(
+            color: chipBg,
+            shape: const StadiumBorder(),
+            child: InkWell(
+              customBorder: const StadiumBorder(),
+              onTap: onCurrency,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                child: Text(currency,
+                    semanticsLabel: 'Currency $currency, tap to change', style: slipText(12.5, 900, color: onAcc)),
+              ),
+            ),
           ),
         ]),
+        const SizedBox(height: 2),
+        // Shrinks to fit for big amounts ("J$125,460.00") on a narrow phone.
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.centerLeft,
+          child: Row(crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [
+            CountUp(cents: payCents, ms: 1200, style: slipText(40, 900, color: onAcc, tabular: true, height: 1.1)),
+            const SizedBox(width: 8),
+            Text(plural(itemCount, 'item'), maxLines: 1, style: slipText(13, 800, color: t.onAccSmall)),
+          ]),
+        ),
         const SizedBox(height: 8),
         GestureDetector(
           onTap: onTotals,
           child: AnimatedSwitcher(duration: const Duration(milliseconds: 200), child: badge),
         ),
+        for (final (ok, text) in checks)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Row(children: [
+              SlipIcon(ok ? Symbols.check_circle_rounded : Symbols.error_rounded, size: 16, color: t.onAccSmall, fill: 1),
+              const SizedBox(width: 6),
+              Expanded(child: Text(text, style: slipText(12.5, 800, color: t.onAccSmall))),
+            ]),
+          ),
       ]),
     );
   }
@@ -753,7 +959,7 @@ class _TotalsRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = SlipTokens.of(context);
-    String v(int? c) => c == null ? '—' : formatCents(c);
+    String v(int? c) => c == null ? '—' : groupedAmount(c);
     return SlipCard(
       radius: t.rRow,
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -767,6 +973,68 @@ class _TotalsRow extends StatelessWidget {
           ]),
         ),
         SlipIcon(Symbols.edit_rounded, size: 20, color: t.ink2),
+      ]),
+    );
+  }
+}
+
+/// What probably made the items not add up, each with a one-tap fix.
+class _Suggestions extends StatelessWidget {
+  const _Suggestions({required this.lines, required this.fixes, required this.onApply, this.onSendDetails});
+  final List<DraftLine> lines;
+  final List<Fix> fixes;
+  final ValueChanged<Fix> onApply;
+  final VoidCallback? onSendDetails;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = SlipTokens.of(context);
+    String name(int i) => lines[i].name.trim().isEmpty ? 'Line ${i + 1}' : sentenceCase(lines[i].name);
+    Widget row(String text, String action, Fix fix) => Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: Row(children: [
+            Expanded(child: Text(text, style: slipText(13, 800, color: t.ink))),
+            const SizedBox(width: 8),
+            FilledButton(
+              style: FilledButton.styleFrom(
+                minimumSize: const Size(0, 34),
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                textStyle: slipText(12.5, 900),
+              ),
+              onPressed: () => onApply(fix),
+              child: Text(action),
+            ),
+          ]),
+        );
+    return SlipCard(
+      radius: t.rRow,
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          SlipIcon(Symbols.troubleshoot_rounded, size: 18, color: t.accText),
+          const SizedBox(width: 8),
+          Expanded(child: Text('Why it might not add up', style: slipText(13.5, 900, color: t.ink))),
+        ]),
+        for (final fix in fixes)
+          switch (fix) {
+            ChangeAmount(:final index, :final cents) => row(
+                '${name(index)} may be ${formatCents(cents)}, not ${formatCents(lines[index].netCents)}.', 'Fix', fix),
+            ReadTwice(:final index) => row('${name(index)} may have been read twice.', 'Remove', fix),
+            MissingLine(:final cents) => row('A line of ${formatCents(cents)} may be missing.', 'Add', fix),
+          },
+        if (fixes.isEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text('No single line explains it. Check the amounts against the receipt.',
+                style: slipText(12.5, 700, color: t.ink2)),
+          ),
+        if (onSendDetails != null)
+          TextButton.icon(
+            style: TextButton.styleFrom(padding: EdgeInsets.zero, visualDensity: VisualDensity.compact),
+            onPressed: onSendDetails,
+            icon: const SlipIcon(Symbols.ios_share_rounded, size: 16),
+            label: const Text('Send reading details'),
+          ),
       ]),
     );
   }

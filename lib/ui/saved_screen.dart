@@ -6,10 +6,12 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart' show DateFormat;
 
 import '../core/analytics/vs_usual.dart';
+import '../core/currency.dart';
 import '../core/money.dart';
 import '../core/text.dart';
 import '../data/receipt_repository.dart';
 import 'motion/motion.dart';
+import 'currency_scope.dart';
 import 'theme/app_theme.dart';
 import 'theme/tokens.dart';
 
@@ -207,7 +209,7 @@ class _Paper extends StatelessWidget {
           Row(children: [
             Expanded(child: Text(l.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: style)),
             const SizedBox(width: 8),
-            Text(formatCents(l.netCents), style: style),
+            Text(groupedAmount(l.netCents), style: style),
           ]),
         if (lines.length > shown.length)
           Align(
@@ -218,7 +220,7 @@ class _Paper extends StatelessWidget {
         rule(),
         Row(children: [
           Expanded(child: Text('TOTAL', style: style.copyWith(fontWeight: FontWeight.w800))),
-          Text(formatCents(total), style: style.copyWith(fontWeight: FontWeight.w800)),
+          Text(money(context, total, draft.currency), style: style.copyWith(fontWeight: FontWeight.w800)),
         ]),
       ]),
     );

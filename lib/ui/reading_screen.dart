@@ -176,8 +176,9 @@ class _Header extends StatelessWidget {
           ),
           AnimatedSwitcher(
             duration: const Duration(milliseconds: 200),
-            // The old line goes at once so two phrases never overlap.
-            switchOutCurve: const Threshold(0),
+            // The old line goes at once so two phrases never overlap. (Its
+            // fade runs backwards, 1 → 0: Threshold(1) is 0 for all of it.)
+            switchOutCurve: const Threshold(1),
             layoutBuilder: (current, previous) =>
                 Stack(alignment: Alignment.centerLeft, children: [...previous, ?current]),
             child: Text(progress?.mood ?? 'Getting ready…',

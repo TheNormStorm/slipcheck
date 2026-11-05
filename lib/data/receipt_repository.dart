@@ -4,6 +4,7 @@ import 'package:intl/intl.dart' show DateFormat;
 
 import '../core/analytics/purchase.dart';
 import '../core/categories.dart';
+import '../core/parsing/checks.dart';
 import '../core/matching/product_matcher.dart';
 import '../core/money.dart';
 import '../core/matching/product_normalizer.dart';
@@ -23,6 +24,8 @@ class DraftLine {
     this.productId,
     this.code,
     this.section,
+    this.taxCode,
+    this.taxCodeUnknown = false,
   }) : originalText = originalText ?? name;
 
   /// The product name as corrected by the user.
@@ -46,6 +49,14 @@ class DraftLine {
   /// Department heading the line was printed under.
   final String? section;
 
+  /// The tax code printed after the price ("F", "T"), for the tax check.
+  /// Not saved.
+  final String? taxCode;
+
+  /// Whether the tax code was lost with the line's price, or the line was
+  /// added by hand: the tax check tries it both ways. Not saved.
+  final bool taxCodeUnknown;
+
   int get netCents => lineTotalCents - discountCents;
 }
 
@@ -61,6 +72,9 @@ class ReceiptDraft {
     this.ocrText,
     this.source = 'photo',
     this.currency = 'USD',
+    this.currencyKnown = false,
+    this.taxLines = const [],
+    this.printedItemCount,
   });
 
   String storeName;
@@ -73,12 +87,24 @@ class ReceiptDraft {
   final List<String> imagePaths;
   final String? ocrText;
   final String source;
-  final String currency;
+
+  /// ISO code ("USD", "JMD").
+  String currency;
+
+  /// Whether [currency] came from the receipt or from you; if not, the
+  /// review screen fills it in from the store or your usual currency.
+  bool currencyKnown;
+
+  /// The tax lines and item count as printed, for checking the lines while
+  /// they are corrected. Not saved.
+  final List<TaxLine> taxLines;
+  final int? printedItemCount;
 }
 
 class ReceiptSummary {
   ReceiptSummary(this.id, this.storeName, this.purchasedAt, this.totalCents, this.itemCount,
-      {this.storeId, this.itemsCents = 0, this.taxCents});
+      {this.storeId, this.itemsCents = 0, this.taxCents, this.currency = 'USD'});
+  final String currency;
   final int id;
   final int? storeId;
   final String? storeName;
@@ -138,7 +164,7 @@ class ReceiptDetail {
       '',
       if (subtotalCents != null) row('Subtotal', subtotalCents!),
       if (s.taxCents != null) row('Tax', s.taxCents!),
-      row('Total', s.spentCents),
+      row('Total (${s.currency})', s.spentCents),
       '',
       'Shared from Slipcheck',
     ].join('\n');
@@ -175,7 +201,11 @@ class MergeUndo {
 }
 
 class StoreSummary {
-  StoreSummary(this.id, this.name, this.receiptCount, this.spentCents, this.lastVisit);
+  StoreSummary(this.id, this.name, this.receiptCount, this.spentCents, this.lastVisit, {this.currency = 'USD'});
+
+  /// The currency of its latest receipt; [spentCents] counts only receipts
+  /// in it.
+  final String currency;
   final int id;
   final String name;
   final int receiptCount;
@@ -192,8 +222,10 @@ class PricePoint {
     required this.unit,
     required this.netCents,
     this.storeId,
+    this.currency = 'USD',
   });
   final int receiptId;
+  final String currency;
   final DateTime date;
   final int? storeId;
   final String? storeName;
@@ -323,6 +355,7 @@ class ReceiptRepository {
           subtotalCents: Value(draft.subtotalCents),
           taxCents: Value(draft.taxCents),
           totalCents: Value(draft.totalCents),
+          currency: Value(draft.currency),
         ),
       );
       await (db.delete(db.lineItems)..where((l) => l.receiptId.equals(receiptId))).go();
@@ -470,12 +503,14 @@ class ReceiptRepository {
       for (final s in stores)
         () {
           final mine = receipts.where((r) => r.storeId == s.id).toList();
+          final currency = mine.isEmpty ? 'USD' : mine.first.currency;
           return StoreSummary(
             s.id,
             s.name,
             mine.length,
-            mine.fold(0, (sum, r) => sum + r.spentCents),
+            mine.where((r) => r.currency == currency).fold(0, (sum, r) => sum + r.spentCents),
             mine.isEmpty ? null : mine.first.purchasedAt,
+            currency: currency,
           );
         }(),
     ]..sort((a, b) => b.spentCents.compareTo(a.spentCents));
@@ -540,6 +575,7 @@ class ReceiptRepository {
           storeId: r.readTable(db.receipts).storeId,
           itemsCents: r.read(net) ?? 0,
           taxCents: r.readTable(db.receipts).taxCents,
+          currency: r.readTable(db.receipts).currency,
         ),
     ];
   }
@@ -627,9 +663,29 @@ class ReceiptRepository {
             quantity: item.quantity,
             unit: item.unit,
             netCents: item.lineTotalCents - item.discountCents,
+            currency: receipt.currency,
           );
         }(),
     ];
+  }
+
+  /// The currency most of your receipts are in; null before the first.
+  Future<String?> mainCurrency() async {
+    final rows = await db.customSelect(
+      'SELECT currency, COUNT(*) AS n FROM receipts GROUP BY currency ORDER BY n DESC, MAX(purchased_at) DESC LIMIT 1',
+      readsFrom: {db.receipts},
+    ).get();
+    return rows.isEmpty ? null : rows.single.read<String>('currency');
+  }
+
+  /// The currency of the store's latest receipt; null for a new store.
+  Future<String?> storeCurrency(int storeId) async {
+    final latest = await (db.select(db.receipts)
+          ..where((r) => r.storeId.equals(storeId))
+          ..orderBy([(r) => OrderingTerm.desc(r.purchasedAt)])
+          ..limit(1))
+        .getSingleOrNull();
+    return latest?.currency;
   }
 
   /// Every saved line as CSV, one row per line, for spreadsheets.
@@ -652,7 +708,7 @@ class ReceiptRepository {
 
     String money(int? cents) => cents == null ? '' : formatCents(cents);
     final out = StringBuffer(
-        'date,store,item,category,quantity,unit,unit_price,line_total,discount,paid,barcode,receipt_id\n');
+        'date,store,item,category,quantity,unit,unit_price,line_total,discount,paid,currency,barcode,receipt_id\n');
     for (final r in rows) {
       final item = r.readTable(db.lineItems);
       final receipt = r.readTable(db.receipts);
@@ -669,6 +725,7 @@ class ReceiptRepository {
         money(item.lineTotalCents),
         money(item.discountCents),
         money(item.lineTotalCents - item.discountCents),
+        receipt.currency,
         item.code,
         receipt.id,
       ].map(cell).join(','));
@@ -791,6 +848,7 @@ class ReceiptRepository {
               date: receipt.purchasedAt,
               storeName: r.readTableOrNull(db.stores)?.name,
               storeId: r.readTableOrNull(db.stores)?.id,
+              currency: receipt.currency,
               quantity: item.quantity,
               unit: item.unit,
               netCents: item.lineTotalCents - item.discountCents,

@@ -34,11 +34,15 @@ const _headingWords = {
   'yogurt', 'cheese', 'eggs', 'french', 'fries', 'tax', 'taxable', 'general',
   'merchandise', 'snacks', 'beverages', 'pharmacy', 'floral', 'bulk', 'natural',
   'cereal', 'candy', 'baby', 'paper', 'cleaning', 'and', '&',
+  // "BAKERY EXTERNAL GOODS", "GROCERY NON-FOODS", "HABERDASHERY", "LIQUORS",
+  // "PHONE CARDS" (Jamaican supermarkets).
+  'external', 'non', 'haberdashery', 'liquor', 'liquors', 'spirits', 'phone', 'cards',
 };
 
 /// Whether a name-only receipt row is a department heading.
 bool isDepartmentHeading(String row) {
-  final words = row.toLowerCase().split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toList();
+  // "GROCERY-FOODS": a hyphen joins heading words too.
+  final words = row.toLowerCase().split(RegExp(r'[\s-]+')).where((w) => w.isNotEmpty).toList();
   if (words.isEmpty || words.length > 4) return false;
   return words.every(_headingWords.contains);
 }
@@ -60,6 +64,8 @@ const _specificHeadings = <String, Category>{
   'pet': Category.pet, 'pets': Category.pet,
   'deposit': Category.deposits,
   'beer': Category.drinks, 'wine': Category.drinks, 'beverages': Category.drinks,
+  'liquor': Category.drinks, 'liquors': Category.drinks, 'spirits': Category.drinks,
+  'haberdashery': Category.household, 'non': Category.household, // "NON-FOODS"
   'snacks': Category.snacks, 'candy': Category.snacks,
 };
 
@@ -122,7 +128,7 @@ const _keywords = <(String, Category)>[
 /// department heading it was printed under, else Other.
 Category categorize(String name, {String? section}) {
   final text = ' ${name.toLowerCase()} ';
-  final words = (section ?? '').toLowerCase().split(RegExp(r'\s+'));
+  final words = (section ?? '').toLowerCase().split(RegExp(r'[\s-]+'));
   for (final (keyword, category) in _keywords) {
     if (text.contains(keyword)) return category;
   }

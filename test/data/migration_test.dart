@@ -48,4 +48,30 @@ void main() {
     expect(await repo.hasSeen('onboarding'), isTrue);
     await db.close();
   });
+
+  test('upgrading to v6 works out the currency of receipts saved as US dollars', () async {
+    final dir = Directory.systemTemp.createTempSync('slipcheck_migration');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    final file = File('${dir.path}/app.sqlite');
+
+    var db = AppDatabase(NativeDatabase(file));
+    Future<int> receipt(String text) => db.into(db.receipts).insert(ReceiptsCompanion.insert(
+          purchasedAt: DateTime(2026, 10, 24),
+          source: 'photo',
+          ocrText: Value(text),
+        ));
+    final cm = await receipt('C&M MEATS & GROCERIES\nMAYPEN, CLARENDON\nTRN# D01 354-337-0003\nTotal \$5,460.00');
+    final mb = await receipt('MARKET BASKET\nMA 6.25% Sales Tax 1.57\nTOTAL 362.90');
+    final unsure = await receipt('CORNER SHOP\nTOTAL 1.99');
+    await db.customStatement('PRAGMA user_version = 5');
+    await db.close();
+
+    db = AppDatabase(NativeDatabase(file));
+    Future<String> currencyOf(int id) async =>
+        (await (db.select(db.receipts)..where((r) => r.id.equals(id))).getSingle()).currency;
+    expect(await currencyOf(cm), 'JMD');
+    expect(await currencyOf(mb), 'USD');
+    expect(await currencyOf(unsure), 'USD'); // left as it was
+    await db.close();
+  });
 }

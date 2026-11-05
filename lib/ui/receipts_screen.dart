@@ -4,11 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart' show DateFormat;
 import 'package:material_symbols_icons/symbols.dart';
 
-import '../core/money.dart';
 import '../core/text.dart';
 import '../data/receipt_repository.dart';
 import 'chart_palette.dart';
 import 'components/kit.dart';
+import 'currency_scope.dart';
 import 'motion/motion.dart';
 import 'receipt_detail_screen.dart';
 import 'reload_on_change.dart';
@@ -164,8 +164,7 @@ class _ReceiptsScreenState extends State<ReceiptsScreen> with ReloadOnChange {
                     Expanded(
                       child: Text(DateFormat.yMMMM().format(month), style: slipText(13, 800, color: t.ink2)),
                     ),
-                    Text(formatCents(list.fold(0, (s, r) => s + r.spentCents)),
-                        style: slipText(13, 900, color: t.ink2, tabular: true)),
+                    Text(totalsByCurrency(list, context), style: slipText(13, 900, color: t.ink2, tabular: true)),
                   ]),
                 ),
                 for (final r in list)
@@ -229,7 +228,7 @@ class _ReceiptsScreenState extends State<ReceiptsScreen> with ReloadOnChange {
                         ),
                       ]),
                     ),
-                    Text(formatCents(s.spentCents), style: slipText(16, 900, color: t.ink, tabular: true)),
+                    Text(money(context, s.spentCents, s.currency), style: slipText(16, 900, color: t.ink, tabular: true)),
                   ]),
                 ),
               );
@@ -310,7 +309,7 @@ class ReceiptCard extends StatelessWidget {
           ]),
         ),
         Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-          Text(formatCents(r.spentCents), style: slipText(16, 900, color: t.ink, tabular: true)),
+          Text(money(context, r.spentCents, r.currency), style: slipText(16, 900, color: t.ink, tabular: true)),
           ?trailingChip,
         ]),
       ]),

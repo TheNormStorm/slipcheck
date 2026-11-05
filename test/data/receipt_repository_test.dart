@@ -236,7 +236,7 @@ void main() {
     expect(text.split('\n').take(4), ['Market Basket', 'Fri, Oct 23, 2026', '', startsWith('MILK 2% 1GAL')]);
     expect(text, contains('  2.11 lb'));
     expect(text, contains('  saved 0.20'));
-    expect(text, contains(RegExp(r'Total +9\.54')));
+    expect(text, contains(RegExp(r'Total \(USD\) +9\.54')));
     expect(text, isNot(contains('4417')));
     expect(text, isNot(contains('.jpg')));
   });
@@ -269,6 +269,43 @@ void main() {
     final milk = (await repo.products()).single;
     expect(milk.purchaseCount, 3);
     expect(await repo.namesRead(milk.id), ['MILK 2% 1GAL', 'MILK 2% 1 GAL']);
+  });
+
+  test('currency: per receipt, per store, and the main one', () async {
+    expect(await repo.mainCurrency(), isNull);
+    final cm = await repo.saveReceipt(ReceiptDraft(
+      storeName: 'C&M Meats',
+      purchasedAt: DateTime(2026, 10, 24),
+      lines: [DraftLine(name: 'MUTTON IMP', quantity: 3, lineTotalCents: 285000)],
+      currency: 'JMD',
+    ));
+    for (final day in [20, 22]) {
+      await repo.saveReceipt(ReceiptDraft(
+        storeName: 'Market Basket',
+        purchasedAt: DateTime(2026, 10, day),
+        lines: [DraftLine(name: 'MILK', lineTotalCents: 429)],
+      ));
+    }
+    expect(await repo.mainCurrency(), 'USD');
+    final stores = {for (final s in await repo.stores()) s.name: s};
+    expect(stores['C&M Meats']!.currency, 'JMD');
+    expect(await repo.storeCurrency(stores['C&M Meats']!.id), 'JMD');
+    expect(await repo.storeCurrency(stores['Market Basket']!.id), 'USD');
+    expect((await repo.receipts(id: cm)).single.currency, 'JMD');
+    expect((await repo.purchases()).firstWhere((p) => p.receiptId == cm).currency, 'JMD');
+    expect((await repo.priceHistory((await repo.products()).firstWhere((p) => p.displayName == 'MUTTON IMP').id)).single.currency,
+        'JMD');
+
+    // Editing keeps it, or changes it when told to.
+    final draft = ReceiptDraft(
+      storeName: 'C&M Meats',
+      purchasedAt: DateTime(2026, 10, 24),
+      lines: [DraftLine(name: 'MUTTON IMP', quantity: 3, lineTotalCents: 285000)],
+      currency: 'TTD',
+      currencyKnown: true,
+    );
+    await repo.updateReceipt(cm, draft);
+    expect((await repo.receipts(id: cm)).single.currency, 'TTD');
   });
 
   group('duplicates and editing', () {

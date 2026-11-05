@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import '../matching/product_matcher.dart' show similarity;
+import 'page_quality.dart';
 
 /// How one page was joined onto the pages before it.
 class PageJoin {
@@ -47,7 +48,9 @@ class StitchResult {
 /// An overlap is accepted when at least [minMatches] rows agree (so two
 /// identical purchases in a row are not mistaken for one), the agreement
 /// reaches the end of the text so far, and starts near the top of the page.
-/// Within it, of each pair of matching rows the better reading is kept;
+/// Within it, of each pair of matching rows the better reading is kept, and
+/// of two equally good ones the one further from its photo's edge (paper
+/// curls and tilts most at the edges, pairing names with the wrong prices);
 /// unmatched rows after it at the bottom of the earlier photo, and before it
 /// at the top of the new one, were cut by the photo edge and are dropped.
 StitchResult stitchPages(
@@ -60,12 +63,18 @@ StitchResult stitchPages(
 }) {
   final rows = <String>[];
   final pageOf = <int>[];
+  // How many rows each row is from its own photo's top or bottom edge.
+  final fromEdge = <int>[];
   final joins = <PageJoin>[];
+  List<int> edges(List<String> page, [int from = 0]) => [
+        for (var i = from; i < page.length; i++) math.min(i, page.length - 1 - i),
+      ];
 
   for (final (p, page) in pages.indexed) {
     if (p == 0 || rows.isEmpty) {
       rows.addAll(page);
       pageOf.addAll(List.filled(page.length, p));
+      fromEdge.addAll(edges(page));
       continue;
     }
 
@@ -79,22 +88,46 @@ StitchResult stitchPages(
       joins.add(PageJoin(page: p, found: false));
       rows.addAll(page);
       pageOf.addAll(List.filled(page.length, p));
+      fromEdge.addAll(edges(page));
       continue;
     }
 
+    // When one photo reads the shared part clearly better, take all of it
+    // from that photo: the other was curling there and paired names with
+    // their neighbours' prices.
+    final fromMine = lo + pairs.first.$1, fromTheirs = pairs.first.$2;
+    final lastTheirs = pairs.last.$2;
+    final mineScore = _readingScore(rows.sublist(fromMine));
+    final theirsScore = _readingScore(page.sublist(fromTheirs, lastTheirs + 1));
+    if (theirsScore >= mineScore + 3) {
+      rows.removeRange(fromMine, rows.length);
+      pageOf.removeRange(fromMine, pageOf.length);
+      fromEdge.removeRange(fromMine, fromEdge.length);
+      final rest = page.sublist(fromTheirs);
+      rows.addAll(rest);
+      pageOf.addAll(List.filled(rest.length, p));
+      fromEdge.addAll(edges(page, fromTheirs));
+      joins.add(PageJoin(page: p, found: true, overlapRows: lastTheirs + 1, matchingRows: pairs.length));
+      continue;
+    }
     for (final (a, b) in pairs) {
       final i = lo + a;
-      if (_quality(page[b]) > _quality(rows[i])) {
+      final mine = _quality(rows[i]), theirs = _quality(page[b]);
+      final theirEdge = math.min(b, page.length - 1 - b);
+      if (theirs > mine || (theirs == mine && rows[i] != page[b] && theirEdge > fromEdge[i])) {
         rows[i] = page[b];
         pageOf[i] = p;
+        fromEdge[i] = theirEdge;
       }
     }
-    final lastMine = lo + pairs.last.$1, lastTheirs = pairs.last.$2;
+    final lastMine = lo + pairs.last.$1;
     rows.removeRange(lastMine + 1, rows.length);
     pageOf.removeRange(lastMine + 1, pageOf.length);
+    fromEdge.removeRange(lastMine + 1, fromEdge.length);
     final rest = page.sublist(lastTheirs + 1);
     rows.addAll(rest);
     pageOf.addAll(List.filled(rest.length, p));
+    fromEdge.addAll(edges(page, lastTheirs + 1));
     joins.add(PageJoin(
       page: p,
       found: true,
@@ -135,6 +168,11 @@ List<(int, int)> _align(List<String> a, List<String> b, double threshold) {
   return pairs;
 }
 
+/// How well a run of rows looks read: lines with their price and tax code
+/// count for it, rows paired with a neighbour's price against it.
+int _readingScore(List<String> rows) =>
+    rows.where((r) => _quality(r) == 2 && !isMisPaired(r)).length - 2 * misPairedRows(rows);
+
 /// How complete a reading of a row looks: one ending in a price beats one
 /// without, and a price followed by its tax code beats a bare price. Equal
 /// readings keep the earlier photo's: a longer line is not a better one
@@ -146,6 +184,7 @@ int _quality(String row) {
 }
 
 String _key(String row) => row.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
+
 
 bool _sameKey(String ka, String kb, double threshold) {
   if (ka.isEmpty || kb.isEmpty) return false;

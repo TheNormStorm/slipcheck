@@ -3,29 +3,36 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:material_symbols_icons/symbols.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:material_symbols_icons/symbols.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../core/text.dart';
+import '../core/update.dart';
 import '../data/backup.dart';
 import '../data/receipt_repository.dart';
+import '../data/update_checker.dart';
 import '../ocr/receipt_reader.dart';
 import 'components/dialogs.dart';
+import 'components/kit.dart';
 import 'onboarding_screen.dart';
 import 'reading_screen.dart';
 import 'review_screen.dart';
 import 'saved_screen.dart';
 import 'scan_flow.dart';
+import 'theme/tokens.dart';
 
 /// What the app can do from anywhere: capture a receipt (scanner, gallery,
 /// typed in) and the data actions of the ⋮ menu. Screens refresh themselves
 /// from `ReceiptRepository.changes`, so nothing here reloads them.
 class AppActions {
-  AppActions(this.repo, this.reader);
+  AppActions(this.repo, this.reader, {this.updates = const UpdateChecker()});
   final ReceiptRepository repo;
   final ReceiptReader reader;
+  final UpdateChecker updates;
 
   /// True while photos are being read.
   final busy = ValueNotifier(false);
@@ -133,6 +140,69 @@ class AppActions {
     // The open database connection cannot be swapped in place; a fresh start
     // opens (and if needed upgrades) the restored file.
     exit(0);
+  }
+
+  /// Asks GitHub whether a newer Slipcheck is out and, if so, offers to
+  /// open its download. Only runs when the user taps it.
+  Future<void> checkForUpdates(BuildContext context) async {
+    final current = (await PackageInfo.fromPlatform()).version;
+    if (!context.mounted) return;
+    // Started before the dialog listens: a quick failure must not count as
+    // unhandled before the dialog shows it.
+    final release = updates.latest()..ignore();
+    await showDialog<void>(
+      context: context,
+      builder: (context) => FutureBuilder(
+        future: release,
+        builder: (context, snap) {
+          final t = SlipTokens.of(context);
+          Widget dialog(IconData icon, String title, String body, List<Widget> actions) => AlertDialog(
+                icon: SlipIcon(icon, size: 36, color: t.accText),
+                title: Text(title, textAlign: TextAlign.center),
+                content: Text(body, textAlign: TextAlign.center),
+                actionsAlignment: MainAxisAlignment.center,
+                actions: actions,
+              );
+          final close = TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK'));
+          if (snap.connectionState != ConnectionState.done) {
+            return AlertDialog(
+              content: Row(children: [
+                SizedBox.square(dimension: 24, child: CircularProgressIndicator(strokeWidth: 3, color: t.acc)),
+                const SizedBox(width: 16),
+                const Expanded(child: Text('Asking GitHub…')),
+              ]),
+            );
+          }
+          if (snap.hasError) {
+            return dialog(Symbols.wifi_off_rounded, "Couldn't check",
+                'GitHub could not be reached. Check your connection and try again.', [close]);
+          }
+          final r = snap.data;
+          if (r == null || !isNewer(r.version, current)) {
+            return dialog(Symbols.verified_rounded, "You're up to date", 'Slipcheck $current is the latest.', [close]);
+          }
+          return dialog(
+            Symbols.system_update_rounded,
+            'Slipcheck ${r.version} is out',
+            [
+              'You have $current.',
+              if (r.notes.isNotEmpty) r.notes,
+              'Download it, then open the file to install. Your receipts stay as they are.',
+            ].join('\n\n'),
+            [
+              TextButton(onPressed: () => Navigator.pop(context), child: const Text('Later')),
+              FilledButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  launchUrl(Uri.parse(r.apkUrl ?? r.pageUrl), mode: LaunchMode.externalApplication);
+                },
+                child: const Text('Download'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
   }
 
   Future<void> clearAll(BuildContext context) async {

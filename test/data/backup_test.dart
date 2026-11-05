@@ -48,7 +48,7 @@ void main() {
     await repo.db.close();
     expect(lines.first, startsWith('date,store,item,category,quantity'));
     expect(lines, hasLength(4));
-    expect(lines[1], '2026-10-22,Market Basket,MILK 2% 1GAL,Dairy & eggs,1,each,4.29,4.29,0.00,4.29,012000171741,1');
+    expect(lines[1], '2026-10-22,Market Basket,MILK 2% 1GAL,Dairy & eggs,1,each,4.29,4.29,0.00,4.29,USD,012000171741,1');
     expect(lines[2], contains('"BANANAS, ORGANIC"'));
     expect(lines[2], contains(',2.17,lb,0.69,1.50,'));
     expect(lines[3], contains(',7.99,1.00,6.99,'));
